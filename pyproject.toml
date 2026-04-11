@@ -1,0 +1,24 @@
+[project]
+name = "color-grid"
+version = "0.1.0"
+description = "Generate color-by-number grid pages from images."
+requires-python = ">=3.10"
+dependencies = [
+    "pillow>=10.0",
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "click>=8.1",
+]
+
+[project.scripts]
+colorgrid = "color_grid.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/color_grid"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
