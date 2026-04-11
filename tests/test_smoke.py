@@ -20,10 +20,11 @@ def test_end_to_end(tmp_path):
     cells = image_to_cell_colors(image, width=2, height=2)
     assert cells.shape == (2, 2, 3)
 
-    labels, palette = quantize_cells(cells, n_colors=4)
-    assert labels.shape == (2, 2)
-    assert palette.shape == (4, 3)
-    assert len(set(labels.flatten().tolist())) == 4
+    for space in ("rgb", "lab"):
+        labels, palette = quantize_cells(cells, n_colors=4, color_space=space)
+        assert labels.shape == (2, 2)
+        assert palette.shape == (4, 3)
+        assert len(set(labels.flatten().tolist())) == 4
 
     page_spec = PageSpec(paper="letter", dpi=150)
     page = render_page(labels, palette, page_spec)

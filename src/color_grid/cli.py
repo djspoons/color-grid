@@ -14,6 +14,13 @@ from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, 
 @click.option("--height", "-h", type=int, required=True, help="Grid height in cells.")
 @click.option("--colors", "-c", type=int, required=True, help="Number of palette colors.")
 @click.option(
+    "--color-space",
+    type=click.Choice(["rgb", "lab"], case_sensitive=False),
+    default="lab",
+    show_default=True,
+    help="Color space used for clustering. LAB is closer to perceptual difference.",
+)
+@click.option(
     "--paper",
     type=click.Choice(sorted(PAPER_SIZES_INCHES.keys()), case_sensitive=False),
     default="letter",
@@ -45,6 +52,7 @@ def main(
     width: int,
     height: int,
     colors: int,
+    color_space: str,
     paper: str,
     dpi: int,
     margin: float,
@@ -59,7 +67,7 @@ def main(
 
     image = Image.open(image_path)
     cells = image_to_cell_colors(image, width, height)
-    labels, palette = quantize_cells(cells, colors)
+    labels, palette = quantize_cells(cells, colors, color_space=color_space.lower())
 
     page = render_page(labels, palette, page_spec)
     save_page(page, output, page_spec)
