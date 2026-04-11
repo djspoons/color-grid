@@ -1,3 +1,4 @@
+import colorsys
 from dataclasses import dataclass
 
 import numpy as np
@@ -26,6 +27,25 @@ class PageSpec:
     @property
     def margin_px(self) -> int:
         return round(self.margin_in * self.dpi)
+
+
+def _legend_order(palette: np.ndarray) -> list[int]:
+    """Order legend entries so colorers can find a swatch quickly.
+
+    Low-saturation entries (grays) are grouped first, light-to-dark, so they
+    don't land randomly among the chromatic colors. The rest are sorted by
+    hue, then by saturation and value as tiebreakers.
+    """
+    keys: list[tuple] = []
+    for i, rgb in enumerate(palette):
+        r, g, b = [float(c) / 255.0 for c in rgb]
+        h, s, v = colorsys.rgb_to_hsv(r, g, b)
+        if s < 0.15:
+            keys.append((0, -v, 0.0, 0.0, i))
+        else:
+            keys.append((1, h, -s, -v, i))
+    keys.sort()
+    return [k[-1] for k in keys]
 
 
 def _load_font(size: int) -> ImageFont.ImageFont:
@@ -138,9 +158,11 @@ def render_page(
 
     swatch = lay["swatch"]
     legend_font = _load_font(max(10, swatch // 2))
-    for i, color in enumerate(palette):
-        col = i % lay["legend_cols"]
-        row = i // lay["legend_cols"]
+    order = _legend_order(palette)
+    for slot, i in enumerate(order):
+        color = palette[i]
+        col = slot % lay["legend_cols"]
+        row = slot // lay["legend_cols"]
         x0 = lay["legend_x"] + col * lay["legend_col_w"]
         y0 = lay["legend_y"] + row * (swatch + lay["legend_gap"])
         draw.rectangle(

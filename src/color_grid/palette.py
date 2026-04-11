@@ -1,29 +1,41 @@
 import json
+import re
 import sys
 from pathlib import Path
 
 import numpy as np
 
 
-def load_palette(path: Path) -> tuple[np.ndarray, list[str]]:
+def load_palette(
+    path: Path,
+) -> tuple[np.ndarray, list[str], list[str | None]]:
     """Load a fixed color palette from a JSON file.
 
     Supports the color-set format used under color-sets/, where the file is a
     list of entries with `color.srgb.{r,g,b}` and a family descriptor in
     `color.color` (e.g. ["Blue", "B2"] or ["A", "Blue", "B3"] for accents).
 
+    If a sibling HTML file (same base name, ``.html``) exists, each entry is
+    additionally matched by its CIELAB value to the HTML row's ``data-code``
+    attribute — giving the real pencil number (e.g. ``"701"``) as the label.
+
     Returns:
         rgb: (P, 3) uint8 array.
         families: length-P list of full family names ("Blue", "Turquoise", …),
-            or "" when one can't be determined. Use `make_subset_labels` to
-            turn a selected subset of these into short grid labels.
+            or "" when one can't be determined.
+        codes: length-P list; each element is the pencil code from the HTML
+            sidecar, or None when no sidecar was found or the entry could not
+            be matched. Use `make_subset_labels(families[selected])` as a
+            fallback when codes are unavailable.
     """
-    data = json.loads(Path(path).read_text())
+    path = Path(path)
+    data = json.loads(path.read_text())
     if not isinstance(data, list):
         raise ValueError(f"{path}: expected a JSON array of color entries")
 
     rgb: list[list[int]] = []
     families: list[str] = []
+    labs: list[tuple[float, float, float] | None] = []
     for i, entry in enumerate(data):
         color = entry.get("color", {})
         try:
@@ -33,7 +45,110 @@ def load_palette(path: Path) -> tuple[np.ndarray, list[str]]:
             raise ValueError(f"{path}: entry {i} missing color.srgb.{{r,g,b}}") from e
         families.append(_extract_family(color.get("color")))
 
-    return np.array(rgb, dtype=np.uint8), families
+        cielab = color.get("cielab") or {}
+        try:
+            labs.append(
+                (
+                    float(cielab["l"]),
+                    float(cielab["a"]),
+                    float(cielab["b"]),
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            labs.append(None)
+
+    codes = _codes_from_sidecar(path, labs)
+    return np.array(rgb, dtype=np.uint8), families, codes
+
+
+def _codes_from_sidecar(
+    json_path: Path, labs: list[tuple[float, float, float] | None]
+) -> list[str | None]:
+    """Look for a `<basename>.html` alongside the JSON file and match each
+    palette entry to an HTML row by CIELAB value. Returns per-entry codes or
+    a list of Nones if no sidecar is present."""
+    html_path = json_path.with_suffix(".html")
+    if not html_path.exists():
+        return [None] * len(labs)
+    try:
+        html_entries = _parse_html_codes(html_path)
+    except Exception as e:
+        print(
+            f"warning: could not parse {html_path.name}: {e}",
+            file=sys.stderr,
+        )
+        return [None] * len(labs)
+
+    # First pass: exact LAB tuple lookup (rounded to 3 decimals, which is the
+    # precision the color-sets files use).
+    by_lab: dict[tuple[float, float, float], str] = {}
+    for code, lab in html_entries:
+        by_lab[_round_lab(lab)] = code
+
+    codes: list[str | None] = []
+    missing: list[int] = []
+    for i, lab in enumerate(labs):
+        if lab is None:
+            codes.append(None)
+            continue
+        hit = by_lab.get(_round_lab(lab))
+        codes.append(hit)
+        if hit is None:
+            missing.append(i)
+
+    # Second pass: nearest-neighbor for any unmatched entries. Uses Hungarian
+    # assignment so multiple near-duplicates don't all snap to the same code.
+    if missing:
+        from scipy.optimize import linear_sum_assignment
+
+        miss_labs = np.array([labs[i] for i in missing])
+        html_labs = np.array([lab for _, lab in html_entries])
+        html_codes = [c for c, _ in html_entries]
+        cost = np.linalg.norm(miss_labs[:, None, :] - html_labs[None, :, :], axis=2)
+        rows, cols = linear_sum_assignment(cost)
+        for r, c in zip(rows, cols):
+            codes[missing[r]] = html_codes[c]
+
+    return codes
+
+
+def _round_lab(lab: tuple[float, float, float]) -> tuple[float, float, float]:
+    return (round(lab[0], 3), round(lab[1], 3), round(lab[2], 3))
+
+
+_MASSTONE_RE = re.compile(
+    r'id="masstone-([a-z0-9]+)"[^>]*>\s*<rect[^>]*fill="lab\(([-\d. ]+)\)"',
+    re.DOTALL,
+)
+_PAINT_CODE_RE = re.compile(
+    r'data-paint-id="([a-z0-9]+)"[^>]*?data-code="(\d+)"',
+    re.DOTALL,
+)
+
+
+def _parse_html_codes(html_path: Path) -> list[tuple[str, tuple[float, float, float]]]:
+    """Extract (data-code, cielab) pairs from the color-set HTML sidecar.
+
+    Each "masstone" svg carries the canonical LAB color for one pencil, and
+    each enclosing div carries its data-code. The same paint id may appear in
+    multiple views (masstone/undertone/etc.); we take the masstone value.
+    """
+    html = html_path.read_text()
+    paint_to_code: dict[str, str] = {}
+    for paint_id, code in _PAINT_CODE_RE.findall(html):
+        paint_to_code.setdefault(paint_id, code)
+
+    entries: list[tuple[str, tuple[float, float, float]]] = []
+    for paint_id, lab_str in _MASSTONE_RE.findall(html):
+        code = paint_to_code.get(paint_id)
+        if code is None:
+            continue
+        parts = lab_str.split()
+        if len(parts) != 3:
+            continue
+        lab = (float(parts[0]), float(parts[1]), float(parts[2]))
+        entries.append((code, lab))
+    return entries
 
 
 def _extract_family(name_field) -> str:

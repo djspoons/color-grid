@@ -108,16 +108,34 @@ def test_fixed_palette_snaps_to_palette_entries():
     assert {tuple(c) for c in out_palette.tolist()} == expected
 
 
-def test_load_palette_returns_families():
+def test_load_palette_returns_families_and_codes():
     path = Path("color-sets/faber-castell-black-edition-colored-pencils.json")
-    rgb, families = load_palette(path)
+    rgb, families, codes = load_palette(path)
     assert rgb.dtype == np.uint8 and rgb.shape == (100, 3)
     assert len(families) == 100
     # "A" accent-prefixed entries should resolve to their real family name.
     assert "A" not in families
-    # Expected families are present.
     assert {"Blue", "Green", "Orange", "Purple", "Red", "Magenta",
             "Yellow", "Turquoise"} <= set(families)
+    # The HTML sidecar is present, so every entry should have a pencil code.
+    assert len(codes) == 100
+    assert all(c is not None for c in codes)
+    # Codes should be numeric strings from the real Faber-Castell catalog.
+    assert all(str(c).isdigit() for c in codes)
+    # The first entry in the JSON happens to be 712 (verified manually).
+    assert "712" in codes
+    # Codes must be unique — that's the whole point of switching to them.
+    assert len(set(codes)) == 100
+
+
+def test_load_palette_without_sidecar_returns_none_codes(tmp_path):
+    import json as _json
+    p = tmp_path / "solo.json"
+    p.write_text(_json.dumps([
+        {"color": {"srgb": {"r": 10, "g": 20, "b": 30}, "color": ["Blue", "B1"]}}
+    ]))
+    _, _, codes = load_palette(p)
+    assert codes == [None]
 
 
 def test_make_subset_labels_by_family():
@@ -134,6 +152,25 @@ def test_make_subset_labels_collision_falls_back(capsys):
 def test_make_subset_labels_unknown_family_falls_back():
     labels = make_subset_labels(["Blue", "", "Red"])
     assert labels == ["1", "2", "3"]
+
+
+def test_legend_order_sorts_by_hue():
+    from color_grid.render import _legend_order
+    palette = np.array(
+        [
+            [200, 200, 200],  # light gray
+            [30, 30, 30],     # dark gray
+            [200, 30, 30],    # red
+            [30, 200, 30],    # green
+            [30, 30, 200],    # blue
+        ],
+        dtype=np.uint8,
+    )
+    order = _legend_order(palette)
+    # Grays come first, light before dark.
+    assert order[:2] == [0, 1]
+    # Chromatic entries follow, sorted by hue (red < green < blue in HSV).
+    assert order[2:] == [2, 3, 4]
 
 
 def test_render_page_uses_entry_labels(tmp_path):
