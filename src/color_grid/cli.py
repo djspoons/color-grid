@@ -4,6 +4,7 @@ import click
 from PIL import Image
 
 from .grid import image_to_cell_colors
+from .palette import load_palette
 from .quantize import quantize_cells
 from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, save_page
 
@@ -15,10 +16,21 @@ from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, 
 @click.option("--colors", "-c", type=int, required=True, help="Number of palette colors.")
 @click.option(
     "--color-space",
-    type=click.Choice(["rgb", "lab"], case_sensitive=False),
+    type=click.Choice(["rgb", "lab", "ciecam16"], case_sensitive=False),
     default="lab",
     show_default=True,
-    help="Color space used for clustering. LAB is closer to perceptual difference.",
+    help=(
+        "Color space used for clustering and palette matching. "
+        "lab is a good default; ciecam16 (CIECAM16-UCS) is the most "
+        "perceptually accurate but slower and requires colour-science."
+    ),
+)
+@click.option(
+    "--palette",
+    "palette_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Snap output colors to entries in a fixed palette JSON file (see color-sets/).",
 )
 @click.option(
     "--method",
@@ -64,6 +76,7 @@ def main(
     colors: int,
     color_space: str,
     method: str,
+    palette_path: Path | None,
     paper: str,
     dpi: int,
     margin: float,
@@ -76,10 +89,22 @@ def main(
 
     page_spec = PageSpec(paper=paper.lower(), dpi=dpi, margin_in=margin)
 
+    fixed_palette = None
+    if palette_path is not None:
+        fixed_palette, _names = load_palette(palette_path)
+        if len(fixed_palette) < colors:
+            raise click.BadParameter(
+                f"palette has {len(fixed_palette)} colors but --colors={colors}"
+            )
+
     image = Image.open(image_path)
     cells = image_to_cell_colors(image, width, height)
     labels, palette = quantize_cells(
-        cells, colors, color_space=color_space.lower(), method=method.lower()
+        cells,
+        colors,
+        color_space=color_space.lower(),
+        method=method.lower(),
+        fixed_palette=fixed_palette,
     )
 
     page = render_page(labels, palette, page_spec)

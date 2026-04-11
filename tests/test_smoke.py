@@ -20,7 +20,7 @@ def test_end_to_end(tmp_path):
     cells = image_to_cell_colors(image, width=2, height=2)
     assert cells.shape == (2, 2, 3)
 
-    for space in ("rgb", "lab"):
+    for space in ("rgb", "lab", "ciecam16"):
         for method in ("kmeans", "maxcoverage"):
             labels, palette = quantize_cells(
                 cells, n_colors=4, color_space=space, method=method
@@ -71,6 +71,35 @@ def test_maxcoverage_preserves_rare_vivid_color():
 
     assert dist_to_red(km_palette) > 100  # k-means ignored the red
     assert dist_to_red(mc_palette) < 20   # maxcoverage landed on it
+
+
+def test_fixed_palette_snaps_to_palette_entries():
+    cells = np.zeros((4, 4, 3), dtype=np.float32)
+    cells[:2, :2] = (250, 10, 10)
+    cells[:2, 2:] = (10, 250, 10)
+    cells[2:, :2] = (10, 10, 250)
+    cells[2:, 2:] = (240, 240, 20)
+
+    # Palette close to but not exactly the cell colors, plus noise entries.
+    fixed = np.array(
+        [
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 0, 255],
+            [255, 255, 0],
+            [120, 120, 120],
+            [0, 0, 0],
+        ],
+        dtype=np.uint8,
+    )
+    _, out_palette = quantize_cells(cells, n_colors=4, fixed_palette=fixed)
+    # Every output color must be an exact entry from the fixed palette.
+    fixed_set = {tuple(c) for c in fixed.tolist()}
+    for color in out_palette.tolist():
+        assert tuple(color) in fixed_set
+    # And the four distinct cells should pick the four pure primaries.
+    expected = {(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)}
+    assert {tuple(c) for c in out_palette.tolist()} == expected
 
 
 def test_a4_and_legal_sizes():
