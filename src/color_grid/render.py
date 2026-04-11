@@ -1,12 +1,31 @@
+from dataclasses import dataclass
+
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 
-CELL_PX = 60
-BORDER_PX = 2
-MARGIN_PX = 40
-LEGEND_SWATCH = 40
-LEGEND_GAP = 12
+PAPER_SIZES_INCHES = {
+    "letter": (8.5, 11.0),
+    "legal": (8.5, 14.0),
+    "a4": (8.27, 11.69),
+    "a5": (5.83, 8.27),
+}
+
+
+@dataclass(frozen=True)
+class PageSpec:
+    paper: str
+    dpi: int
+    margin_in: float = 0.5
+
+    @property
+    def size_px(self) -> tuple[int, int]:
+        w_in, h_in = PAPER_SIZES_INCHES[self.paper]
+        return (round(w_in * self.dpi), round(h_in * self.dpi))
+
+    @property
+    def margin_px(self) -> int:
+        return round(self.margin_in * self.dpi)
 
 
 def _load_font(size: int) -> ImageFont.ImageFont:
@@ -18,89 +37,142 @@ def _load_font(size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def render_page(labels: np.ndarray, palette: np.ndarray) -> Image.Image:
-    """Render a color-by-number page: numbered grid on top, legend below."""
+def _layout(page: PageSpec, grid_w: int, grid_h: int, n_colors: int) -> dict:
+    """Compute cell size and legend geometry that fits on the page."""
+    pw, ph = page.size_px
+    m = page.margin_px
+    avail_w = pw - 2 * m
+    avail_h = ph - 2 * m
+
+    swatch = round(0.35 * page.dpi)
+    legend_gap = round(0.12 * page.dpi)
+    legend_label_w = round(0.55 * page.dpi)
+    legend_col_w = swatch + legend_label_w
+    legend_cols = max(1, avail_w // legend_col_w)
+    legend_rows = (n_colors + legend_cols - 1) // legend_cols
+    legend_h = legend_rows * swatch + (legend_rows - 1) * legend_gap
+    grid_legend_gap = round(0.3 * page.dpi)
+
+    grid_area_h = avail_h - legend_h - grid_legend_gap
+    if grid_area_h <= 0:
+        raise ValueError(
+            f"{n_colors} colors leave no room for the grid on {page.paper}; "
+            "reduce colors or use larger paper."
+        )
+
+    cell_px = min(avail_w // grid_w, grid_area_h // grid_h)
+    if cell_px < 10:
+        raise ValueError(
+            f"grid {grid_w}x{grid_h} is too large for {page.paper} at {page.dpi} dpi"
+        )
+
+    grid_px_w = cell_px * grid_w
+    grid_px_h = cell_px * grid_h
+    grid_x = (pw - grid_px_w) // 2
+    grid_y = m
+
+    legend_y = grid_y + grid_px_h + grid_legend_gap
+    legend_total_w = legend_cols * legend_col_w
+    legend_x = (pw - legend_total_w) // 2
+
+    return {
+        "cell_px": cell_px,
+        "grid_x": grid_x,
+        "grid_y": grid_y,
+        "swatch": swatch,
+        "legend_gap": legend_gap,
+        "legend_cols": legend_cols,
+        "legend_col_w": legend_col_w,
+        "legend_x": legend_x,
+        "legend_y": legend_y,
+    }
+
+
+def render_page(labels: np.ndarray, palette: np.ndarray, page: PageSpec) -> Image.Image:
+    """Render a printable color-by-number page."""
     h, w = labels.shape
     n_colors = len(palette)
+    lay = _layout(page, w, h, n_colors)
 
-    grid_w = w * CELL_PX + BORDER_PX
-    grid_h = h * CELL_PX + BORDER_PX
+    cell = lay["cell_px"]
+    border = max(1, round(cell * 0.04))
 
-    legend_cols = max(1, (grid_w - 2 * MARGIN_PX) // (LEGEND_SWATCH + 80))
-    legend_rows = (n_colors + legend_cols - 1) // legend_cols
-    legend_h = legend_rows * (LEGEND_SWATCH + LEGEND_GAP)
+    img = Image.new("RGB", page.size_px, "white")
+    draw = ImageDraw.Draw(img)
 
-    page_w = grid_w + 2 * MARGIN_PX
-    page_h = grid_h + legend_h + 3 * MARGIN_PX
+    number_font = _load_font(max(10, cell // 2))
 
-    page = Image.new("RGB", (page_w, page_h), "white")
-    draw = ImageDraw.Draw(page)
-
-    number_font = _load_font(CELL_PX // 2)
-    legend_font = _load_font(LEGEND_SWATCH // 2)
-
-    origin_x = MARGIN_PX
-    origin_y = MARGIN_PX
-
+    gx, gy = lay["grid_x"], lay["grid_y"]
     for row in range(h):
         for col in range(w):
-            x0 = origin_x + col * CELL_PX
-            y0 = origin_y + row * CELL_PX
-            x1 = x0 + CELL_PX
-            y1 = y0 + CELL_PX
-            draw.rectangle([x0, y0, x1, y1], outline="black", width=BORDER_PX)
+            x0 = gx + col * cell
+            y0 = gy + row * cell
+            x1 = x0 + cell
+            y1 = y0 + cell
+            draw.rectangle([x0, y0, x1, y1], outline="black", width=border)
 
-            label = int(labels[row, col]) + 1
-            text = str(label)
+            text = str(int(labels[row, col]) + 1)
             bbox = draw.textbbox((0, 0), text, font=number_font)
             tw = bbox[2] - bbox[0]
             th = bbox[3] - bbox[1]
-            tx = x0 + (CELL_PX - tw) // 2 - bbox[0]
-            ty = y0 + (CELL_PX - th) // 2 - bbox[1]
+            tx = x0 + (cell - tw) // 2 - bbox[0]
+            ty = y0 + (cell - th) // 2 - bbox[1]
             draw.text((tx, ty), text, fill="black", font=number_font)
 
-    legend_y = origin_y + grid_h + MARGIN_PX
-    col_stride = (page_w - 2 * MARGIN_PX) // legend_cols
+    swatch = lay["swatch"]
+    legend_font = _load_font(max(10, swatch // 2))
     for i, color in enumerate(palette):
-        col = i % legend_cols
-        row = i // legend_cols
-        x0 = MARGIN_PX + col * col_stride
-        y0 = legend_y + row * (LEGEND_SWATCH + LEGEND_GAP)
+        col = i % lay["legend_cols"]
+        row = i // lay["legend_cols"]
+        x0 = lay["legend_x"] + col * lay["legend_col_w"]
+        y0 = lay["legend_y"] + row * (swatch + lay["legend_gap"])
         draw.rectangle(
-            [x0, y0, x0 + LEGEND_SWATCH, y0 + LEGEND_SWATCH],
+            [x0, y0, x0 + swatch, y0 + swatch],
             fill=tuple(int(c) for c in color),
             outline="black",
-            width=BORDER_PX,
+            width=border,
         )
         draw.text(
-            (x0 + LEGEND_SWATCH + 8, y0 + LEGEND_SWATCH // 4),
+            (x0 + swatch + swatch // 4, y0 + swatch // 4),
             str(i + 1),
             fill="black",
             font=legend_font,
         )
 
-    return page
+    return img
 
 
-def render_solution(labels: np.ndarray, palette: np.ndarray) -> Image.Image:
-    """Render the filled-in grid (preview of the finished result)."""
+def render_solution(labels: np.ndarray, palette: np.ndarray, page: PageSpec) -> Image.Image:
+    """Render a filled-in preview on the same page spec."""
     h, w = labels.shape
-    grid_w = w * CELL_PX + BORDER_PX
-    grid_h = h * CELL_PX + BORDER_PX
+    lay = _layout(page, w, h, len(palette))
+    cell = lay["cell_px"]
+    border = max(1, round(cell * 0.04))
 
-    page = Image.new("RGB", (grid_w + 2 * MARGIN_PX, grid_h + 2 * MARGIN_PX), "white")
-    draw = ImageDraw.Draw(page)
+    img = Image.new("RGB", page.size_px, "white")
+    draw = ImageDraw.Draw(img)
 
+    gx, gy = lay["grid_x"], lay["grid_y"]
     for row in range(h):
         for col in range(w):
-            x0 = MARGIN_PX + col * CELL_PX
-            y0 = MARGIN_PX + row * CELL_PX
+            x0 = gx + col * cell
+            y0 = gy + row * cell
             color = tuple(int(c) for c in palette[int(labels[row, col])])
             draw.rectangle(
-                [x0, y0, x0 + CELL_PX, y0 + CELL_PX],
+                [x0, y0, x0 + cell, y0 + cell],
                 fill=color,
                 outline="black",
-                width=BORDER_PX,
+                width=border,
             )
+    return img
 
-    return page
+
+def save_page(image: Image.Image, path, page: PageSpec) -> None:
+    """Save as PDF (default) or PNG based on the path suffix."""
+    suffix = path.suffix.lower()
+    if suffix == ".pdf" or suffix == "":
+        if suffix == "":
+            path = path.with_suffix(".pdf")
+        image.save(path, "PDF", resolution=page.dpi)
+    else:
+        image.save(path, dpi=(page.dpi, page.dpi))
