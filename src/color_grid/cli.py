@@ -4,7 +4,7 @@ import click
 from PIL import Image
 
 from .grid import image_to_cell_colors
-from .palette import load_palette, make_subset_labels
+from .palette import load_palette
 from .quantize import quantize_cells
 from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, save_page
 
@@ -90,10 +90,11 @@ def main(
     page_spec = PageSpec(paper=paper.lower(), dpi=dpi, margin_in=margin)
 
     fixed_palette = None
-    palette_families: list[str] | None = None
-    palette_codes: list[str | None] | None = None
+    palette_codes: list[str] | None = None
     if palette_path is not None:
-        fixed_palette, palette_families, palette_codes = load_palette(palette_path)
+        pal = load_palette(palette_path)
+        fixed_palette = pal.rgb
+        palette_codes = pal.codes
         if len(fixed_palette) < colors:
             raise click.BadParameter(
                 f"palette has {len(fixed_palette)} colors but --colors={colors}"
@@ -110,15 +111,8 @@ def main(
     )
 
     entry_labels = None
-    if chosen_indices is not None:
-        selected_codes = (
-            [palette_codes[int(i)] for i in chosen_indices] if palette_codes else []
-        )
-        if selected_codes and all(c is not None for c in selected_codes):
-            entry_labels = [str(c) for c in selected_codes]
-        elif palette_families is not None:
-            selected_families = [palette_families[int(i)] for i in chosen_indices]
-            entry_labels = make_subset_labels(selected_families)
+    if chosen_indices is not None and palette_codes is not None:
+        entry_labels = [palette_codes[int(i)] for i in chosen_indices]
 
     page = render_page(labels, palette, page_spec, entry_labels=entry_labels)
     save_page(page, output, page_spec)

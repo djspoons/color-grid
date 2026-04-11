@@ -4,7 +4,7 @@ from PIL import Image
 from pathlib import Path
 
 from color_grid.grid import image_to_cell_colors
-from color_grid.palette import load_palette, make_subset_labels
+from color_grid.palette import load_palette
 from color_grid.quantize import quantize_cells
 from color_grid.render import PageSpec, render_page, render_solution, save_page
 
@@ -108,50 +108,63 @@ def test_fixed_palette_snaps_to_palette_entries():
     assert {tuple(c) for c in out_palette.tolist()} == expected
 
 
-def test_load_palette_returns_families_and_codes():
+def test_load_faber_castell_palette():
     path = Path("color-sets/faber-castell-black-edition-colored-pencils.json")
-    rgb, families, codes = load_palette(path)
-    assert rgb.dtype == np.uint8 and rgb.shape == (100, 3)
-    assert len(families) == 100
-    # "A" accent-prefixed entries should resolve to their real family name.
-    assert "A" not in families
-    assert {"Blue", "Green", "Orange", "Purple", "Red", "Magenta",
-            "Yellow", "Turquoise"} <= set(families)
-    # The HTML sidecar is present, so every entry should have a pencil code.
-    assert len(codes) == 100
-    assert all(c is not None for c in codes)
-    # Codes should be numeric strings from the real Faber-Castell catalog.
-    assert all(str(c).isdigit() for c in codes)
-    # The first entry in the JSON happens to be 712 (verified manually).
-    assert "712" in codes
-    # Codes must be unique — that's the whole point of switching to them.
-    assert len(set(codes)) == 100
+    pal = load_palette(path)
+    assert pal.name.startswith("Faber-Castell")
+    assert pal.rgb.dtype == np.uint8 and pal.rgb.shape == (100, 3)
+    assert len(pal.codes) == 100
+    assert all(c.isdigit() for c in pal.codes)
+    assert len(set(pal.codes)) == 100
+    # 701 "Yellow" should round-trip from CAM16-UCS to something very close
+    # to the published sRGB value [255, 226, 3]. Guard against regressions
+    # in the CAM16UCS scaling convention.
+    idx = pal.codes.index("701")
+    r, g, b = pal.rgb[idx]
+    assert r == 255
+    assert abs(int(g) - 226) <= 3
+    assert int(b) <= 10
 
 
-def test_load_palette_without_sidecar_returns_none_codes(tmp_path):
+def test_load_palette_srgb_format(tmp_path):
     import json as _json
-    p = tmp_path / "solo.json"
-    p.write_text(_json.dumps([
-        {"color": {"srgb": {"r": 10, "g": 20, "b": 30}, "color": ["Blue", "B1"]}}
-    ]))
-    _, _, codes = load_palette(p)
-    assert codes == [None]
+    p = tmp_path / "pal.json"
+    p.write_text(_json.dumps({
+        "name": "Test",
+        "color_space": "srgb",
+        "colors": [
+            {"code": "A", "color": [255, 0, 0]},
+            {"code": "B", "color": [0, 255, 0]},
+        ],
+    }))
+    pal = load_palette(p)
+    assert pal.codes == ["A", "B"]
+    assert pal.rgb.tolist() == [[255, 0, 0], [0, 255, 0]]
 
 
-def test_make_subset_labels_by_family():
-    labels = make_subset_labels(["Blue", "Blue", "Red", "Green", "Blue"])
-    assert labels == ["B1", "B2", "R1", "G1", "B3"]
+def test_load_palette_lab_format_roundtrips_primaries(tmp_path):
+    import json as _json
+    # LAB of pure red in D65: ~(53.24, 80.09, 67.20)
+    p = tmp_path / "pal.json"
+    p.write_text(_json.dumps({
+        "name": "Test",
+        "color_space": "lab",
+        "colors": [{"code": "R", "color": [53.24, 80.09, 67.20]}],
+    }))
+    pal = load_palette(p)
+    r, g, b = pal.rgb[0]
+    assert r > 240 and g < 15 and b < 15
 
 
-def test_make_subset_labels_collision_falls_back(capsys):
-    labels = make_subset_labels(["Blue", "Black", "Red"])
-    assert labels == ["1", "2", "3"]
-    assert "collide" in capsys.readouterr().err
-
-
-def test_make_subset_labels_unknown_family_falls_back():
-    labels = make_subset_labels(["Blue", "", "Red"])
-    assert labels == ["1", "2", "3"]
+def test_load_palette_rejects_unknown_space(tmp_path):
+    import json as _json
+    p = tmp_path / "pal.json"
+    p.write_text(_json.dumps({"name": "t", "color_space": "xyz", "colors": [
+        {"code": "1", "color": [0, 0, 0]}
+    ]}))
+    import pytest
+    with pytest.raises(ValueError):
+        load_palette(p)
 
 
 def test_legend_order_sorts_by_hue():
