@@ -21,10 +21,13 @@ def test_end_to_end(tmp_path):
     assert cells.shape == (2, 2, 3)
 
     for space in ("rgb", "lab"):
-        labels, palette = quantize_cells(cells, n_colors=4, color_space=space)
-        assert labels.shape == (2, 2)
-        assert palette.shape == (4, 3)
-        assert len(set(labels.flatten().tolist())) == 4
+        for method in ("kmeans", "maxcoverage"):
+            labels, palette = quantize_cells(
+                cells, n_colors=4, color_space=space, method=method
+            )
+            assert labels.shape == (2, 2)
+            assert palette.shape == (4, 3)
+            assert len(set(labels.flatten().tolist())) == 4
 
     page_spec = PageSpec(paper="letter", dpi=150)
     page = render_page(labels, palette, page_spec)
@@ -48,6 +51,26 @@ def test_fewer_unique_colors_than_requested():
     labels, palette = quantize_cells(cells, n_colors=5)
     assert palette.shape[0] == 1
     assert (labels == 0).all()
+
+
+def test_maxcoverage_preserves_rare_vivid_color():
+    # Three distinct brown modes dominate the image, leaving k-means with no
+    # budget for a single-cell red. maxcoverage should still pick it up.
+    cells = np.zeros((30, 30, 3), dtype=np.float32)
+    cells[:10, :] = (120, 80, 40)
+    cells[10:20, :] = (150, 100, 60)
+    cells[20:, :] = (90, 60, 30)
+    cells[15, 15] = (230, 20, 20)  # single vivid red cell
+
+    def dist_to_red(palette):
+        red = np.array([230, 20, 20])
+        return np.min(np.linalg.norm(palette.astype(float) - red, axis=1))
+
+    _, km_palette = quantize_cells(cells, n_colors=3, method="kmeans")
+    _, mc_palette = quantize_cells(cells, n_colors=3, method="maxcoverage")
+
+    assert dist_to_red(km_palette) > 100  # k-means ignored the red
+    assert dist_to_red(mc_palette) < 20   # maxcoverage landed on it
 
 
 def test_a4_and_legal_sizes():

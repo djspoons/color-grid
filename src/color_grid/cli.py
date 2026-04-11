@@ -21,6 +21,16 @@ from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, 
     help="Color space used for clustering. LAB is closer to perceptual difference.",
 )
 @click.option(
+    "--method",
+    type=click.Choice(["kmeans", "maxcoverage"], case_sensitive=False),
+    default="maxcoverage",
+    show_default=True,
+    help=(
+        "kmeans minimizes average error but loses rare vivid colors; "
+        "maxcoverage uses farthest-first selection to preserve the full color range."
+    ),
+)
+@click.option(
     "--paper",
     type=click.Choice(sorted(PAPER_SIZES_INCHES.keys()), case_sensitive=False),
     default="letter",
@@ -53,6 +63,7 @@ def main(
     height: int,
     colors: int,
     color_space: str,
+    method: str,
     paper: str,
     dpi: int,
     margin: float,
@@ -67,7 +78,9 @@ def main(
 
     image = Image.open(image_path)
     cells = image_to_cell_colors(image, width, height)
-    labels, palette = quantize_cells(cells, colors, color_space=color_space.lower())
+    labels, palette = quantize_cells(
+        cells, colors, color_space=color_space.lower(), method=method.lower()
+    )
 
     page = render_page(labels, palette, page_spec)
     save_page(page, output, page_spec)
