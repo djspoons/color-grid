@@ -4,7 +4,7 @@ import click
 from PIL import Image
 
 from .grid import image_to_cell_colors
-from .palette import load_palette
+from .palette import load_palette, make_subset_labels
 from .quantize import quantize_cells
 from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, save_page
 
@@ -90,8 +90,9 @@ def main(
     page_spec = PageSpec(paper=paper.lower(), dpi=dpi, margin_in=margin)
 
     fixed_palette = None
+    palette_families: list[str] | None = None
     if palette_path is not None:
-        fixed_palette, _names = load_palette(palette_path)
+        fixed_palette, palette_families = load_palette(palette_path)
         if len(fixed_palette) < colors:
             raise click.BadParameter(
                 f"palette has {len(fixed_palette)} colors but --colors={colors}"
@@ -99,7 +100,7 @@ def main(
 
     image = Image.open(image_path)
     cells = image_to_cell_colors(image, width, height)
-    labels, palette = quantize_cells(
+    labels, palette, chosen_indices = quantize_cells(
         cells,
         colors,
         color_space=color_space.lower(),
@@ -107,7 +108,12 @@ def main(
         fixed_palette=fixed_palette,
     )
 
-    page = render_page(labels, palette, page_spec)
+    entry_labels = None
+    if chosen_indices is not None and palette_families is not None:
+        selected = [palette_families[int(i)] for i in chosen_indices]
+        entry_labels = make_subset_labels(selected)
+
+    page = render_page(labels, palette, page_spec, entry_labels=entry_labels)
     save_page(page, output, page_spec)
     click.echo(f"wrote {output}")
 

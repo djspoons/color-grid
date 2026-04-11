@@ -16,7 +16,7 @@ def quantize_cells(
     method: Method = "kmeans",
     fixed_palette: np.ndarray | None = None,
     random_state: int = 0,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Cluster cell colors into `n_colors` groups.
 
     Args:
@@ -28,6 +28,13 @@ def quantize_cells(
             first selection to preserve rare vivid colors.
         fixed_palette: optional (P, 3) uint8 sRGB array. When provided, each
             cluster center is snapped to its nearest unused palette entry.
+
+    Returns:
+        labels: (H, W) int array of indices into the output palette.
+        palette: (n, 3) uint8 sRGB array.
+        chosen_indices: when `fixed_palette` was given, a length-n int array
+            of indices into that palette identifying which entries were used;
+            otherwise None.
     """
     if color_space not in _VALID_SPACES:
         raise ValueError(f"unknown color_space: {color_space!r}")
@@ -48,14 +55,14 @@ def quantize_cells(
         labels, centers = _farthest_first(features, k)
 
     if fixed_palette is not None:
-        labels, palette = _snap_to_palette(
+        labels, palette, chosen = _snap_to_palette(
             features, centers, fixed_palette, color_space
         )
-        return labels.reshape(h, w), palette
+        return labels.reshape(h, w), palette, chosen
 
     rgb_centers = _features_to_rgb(centers, color_space)
     palette = np.clip(rgb_centers, 0, 255).astype(np.uint8)
-    return labels.reshape(h, w), palette
+    return labels.reshape(h, w), palette, None
 
 
 _colour_mod = None
@@ -134,10 +141,11 @@ def _snap_to_palette(
     centers: np.ndarray,
     fixed_palette: np.ndarray,
     color_space: ColorSpace,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Map cluster centers to their nearest unused palette entries.
 
     features and centers are in `color_space`; fixed_palette is uint8 sRGB.
+    Returns (labels, snapped_rgb, chosen_indices).
     """
     palette_features = _rgb_to_features(fixed_palette, color_space)
 
@@ -158,5 +166,6 @@ def _snap_to_palette(
     chosen_features = palette_features[chosen]
     diffs = features[:, None, :] - chosen_features[None, :, :]
     labels = np.argmin(np.linalg.norm(diffs, axis=2), axis=1)
-    snapped_rgb = fixed_palette[chosen].astype(np.uint8)
-    return labels, snapped_rgb
+    chosen_arr = np.array(chosen, dtype=np.int64)
+    snapped_rgb = fixed_palette[chosen_arr].astype(np.uint8)
+    return labels, snapped_rgb, chosen_arr

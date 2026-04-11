@@ -88,10 +88,26 @@ def _layout(page: PageSpec, grid_w: int, grid_h: int, n_colors: int) -> dict:
     }
 
 
-def render_page(labels: np.ndarray, palette: np.ndarray, page: PageSpec) -> Image.Image:
-    """Render a printable color-by-number page."""
+def render_page(
+    labels: np.ndarray,
+    palette: np.ndarray,
+    page: PageSpec,
+    entry_labels: list[str] | None = None,
+) -> Image.Image:
+    """Render a printable color-by-number page.
+
+    `entry_labels`, if provided, is a length-n list of strings — one per
+    palette entry — used in both the grid cells and the legend. Defaults to
+    "1".."n".
+    """
     h, w = labels.shape
     n_colors = len(palette)
+    if entry_labels is None:
+        entry_labels = [str(i + 1) for i in range(n_colors)]
+    elif len(entry_labels) != n_colors:
+        raise ValueError(
+            f"entry_labels has {len(entry_labels)} items but palette has {n_colors}"
+        )
     lay = _layout(page, w, h, n_colors)
 
     cell = lay["cell_px"]
@@ -100,7 +116,8 @@ def render_page(labels: np.ndarray, palette: np.ndarray, page: PageSpec) -> Imag
     img = Image.new("RGB", page.size_px, "white")
     draw = ImageDraw.Draw(img)
 
-    number_font = _load_font(max(10, cell // 2))
+    longest = max(len(t) for t in entry_labels) or 1
+    number_font = _load_font(max(10, int(cell * 0.7 / longest)))
 
     gx, gy = lay["grid_x"], lay["grid_y"]
     for row in range(h):
@@ -111,7 +128,7 @@ def render_page(labels: np.ndarray, palette: np.ndarray, page: PageSpec) -> Imag
             y1 = y0 + cell
             draw.rectangle([x0, y0, x1, y1], outline="black", width=border)
 
-            text = str(int(labels[row, col]) + 1)
+            text = entry_labels[int(labels[row, col])]
             bbox = draw.textbbox((0, 0), text, font=number_font)
             tw = bbox[2] - bbox[0]
             th = bbox[3] - bbox[1]
@@ -134,7 +151,7 @@ def render_page(labels: np.ndarray, palette: np.ndarray, page: PageSpec) -> Imag
         )
         draw.text(
             (x0 + swatch + swatch // 4, y0 + swatch // 4),
-            str(i + 1),
+            entry_labels[i],
             fill="black",
             font=legend_font,
         )

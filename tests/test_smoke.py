@@ -1,7 +1,10 @@
 import numpy as np
 from PIL import Image
 
+from pathlib import Path
+
 from color_grid.grid import image_to_cell_colors
+from color_grid.palette import load_palette, make_subset_labels
 from color_grid.quantize import quantize_cells
 from color_grid.render import PageSpec, render_page, render_solution, save_page
 
@@ -22,9 +25,10 @@ def test_end_to_end(tmp_path):
 
     for space in ("rgb", "lab", "ciecam16"):
         for method in ("kmeans", "maxcoverage"):
-            labels, palette = quantize_cells(
+            labels, palette, chosen = quantize_cells(
                 cells, n_colors=4, color_space=space, method=method
             )
+            assert chosen is None
             assert labels.shape == (2, 2)
             assert palette.shape == (4, 3)
             assert len(set(labels.flatten().tolist())) == 4
@@ -48,9 +52,10 @@ def test_end_to_end(tmp_path):
 def test_fewer_unique_colors_than_requested():
     image = Image.new("RGB", (20, 20), (128, 64, 200))
     cells = image_to_cell_colors(image, width=2, height=2)
-    labels, palette = quantize_cells(cells, n_colors=5)
+    labels, palette, chosen = quantize_cells(cells, n_colors=5)
     assert palette.shape[0] == 1
     assert (labels == 0).all()
+    assert chosen is None
 
 
 def test_maxcoverage_preserves_rare_vivid_color():
@@ -66,8 +71,8 @@ def test_maxcoverage_preserves_rare_vivid_color():
         red = np.array([230, 20, 20])
         return np.min(np.linalg.norm(palette.astype(float) - red, axis=1))
 
-    _, km_palette = quantize_cells(cells, n_colors=3, method="kmeans")
-    _, mc_palette = quantize_cells(cells, n_colors=3, method="maxcoverage")
+    _, km_palette, _ = quantize_cells(cells, n_colors=3, method="kmeans")
+    _, mc_palette, _ = quantize_cells(cells, n_colors=3, method="maxcoverage")
 
     assert dist_to_red(km_palette) > 100  # k-means ignored the red
     assert dist_to_red(mc_palette) < 20   # maxcoverage landed on it
@@ -92,7 +97,8 @@ def test_fixed_palette_snaps_to_palette_entries():
         ],
         dtype=np.uint8,
     )
-    _, out_palette = quantize_cells(cells, n_colors=4, fixed_palette=fixed)
+    _, out_palette, chosen = quantize_cells(cells, n_colors=4, fixed_palette=fixed)
+    assert chosen is not None and chosen.shape == (4,)
     # Every output color must be an exact entry from the fixed palette.
     fixed_set = {tuple(c) for c in fixed.tolist()}
     for color in out_palette.tolist():
@@ -100,6 +106,46 @@ def test_fixed_palette_snaps_to_palette_entries():
     # And the four distinct cells should pick the four pure primaries.
     expected = {(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)}
     assert {tuple(c) for c in out_palette.tolist()} == expected
+
+
+def test_load_palette_returns_families():
+    path = Path("color-sets/faber-castell-black-edition-colored-pencils.json")
+    rgb, families = load_palette(path)
+    assert rgb.dtype == np.uint8 and rgb.shape == (100, 3)
+    assert len(families) == 100
+    # "A" accent-prefixed entries should resolve to their real family name.
+    assert "A" not in families
+    # Expected families are present.
+    assert {"Blue", "Green", "Orange", "Purple", "Red", "Magenta",
+            "Yellow", "Turquoise"} <= set(families)
+
+
+def test_make_subset_labels_by_family():
+    labels = make_subset_labels(["Blue", "Blue", "Red", "Green", "Blue"])
+    assert labels == ["B1", "B2", "R1", "G1", "B3"]
+
+
+def test_make_subset_labels_collision_falls_back(capsys):
+    labels = make_subset_labels(["Blue", "Black", "Red"])
+    assert labels == ["1", "2", "3"]
+    assert "collide" in capsys.readouterr().err
+
+
+def test_make_subset_labels_unknown_family_falls_back():
+    labels = make_subset_labels(["Blue", "", "Red"])
+    assert labels == ["1", "2", "3"]
+
+
+def test_render_page_uses_entry_labels(tmp_path):
+    labels = np.array([[0, 1], [1, 0]], dtype=int)
+    palette = np.array([[200, 30, 30], [30, 200, 30]], dtype=np.uint8)
+    page_spec = PageSpec(paper="letter", dpi=100)
+    img = render_page(labels, palette, page_spec, entry_labels=["R3", "G5"])
+    assert img.size == page_spec.size_px
+
+    import pytest
+    with pytest.raises(ValueError):
+        render_page(labels, palette, page_spec, entry_labels=["only-one"])
 
 
 def test_a4_and_legal_sizes():
