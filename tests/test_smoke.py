@@ -1,7 +1,8 @@
-import numpy as np
-from PIL import Image
+import xml.etree.ElementTree as ET
 
-from pathlib import Path
+import numpy as np
+import pytest
+from PIL import Image
 
 from color_grid.grid import image_to_cell_colors
 from color_grid.palette import load_palette
@@ -33,20 +34,32 @@ def test_end_to_end(tmp_path):
             assert palette.shape == (4, 3)
             assert len(set(labels.flatten().tolist())) == 4
 
-    page_spec = PageSpec(paper="letter", dpi=150)
-    page = render_page(labels, palette, page_spec)
-    assert page.size == page_spec.size_px
+    page_spec = PageSpec(paper="letter")
+
+    # PDF output
+    pdf_data = render_page(labels, palette, page_spec)
+    assert isinstance(pdf_data, bytes) and len(pdf_data) > 0
+    assert pdf_data[:5] == b"%PDF-"
 
     out_pdf = tmp_path / "out.pdf"
-    save_page(page, out_pdf, page_spec)
+    save_page(pdf_data, out_pdf)
     assert out_pdf.exists() and out_pdf.stat().st_size > 0
 
-    out_png = tmp_path / "out.png"
-    save_page(page, out_png, page_spec)
-    assert out_png.exists()
+    # SVG output
+    svg_data = render_page(labels, palette, page_spec, fmt="svg")
+    assert isinstance(svg_data, bytes) and len(svg_data) > 0
+    ET.fromstring(svg_data)  # valid XML
 
-    solution = render_solution(labels, palette, page_spec)
-    assert solution.size == page_spec.size_px
+    out_svg = tmp_path / "out.svg"
+    save_page(svg_data, out_svg)
+    assert out_svg.exists() and out_svg.stat().st_size > 0
+
+    # Solution
+    sol_data = render_solution(labels, palette, page_spec)
+    assert isinstance(sol_data, bytes) and sol_data[:5] == b"%PDF-"
+
+    sol_svg = render_solution(labels, palette, page_spec, fmt="svg")
+    ET.fromstring(sol_svg)
 
 
 def test_fewer_unique_colors_than_requested():
@@ -59,13 +72,11 @@ def test_fewer_unique_colors_than_requested():
 
 
 def test_maxcoverage_preserves_rare_vivid_color():
-    # Three distinct brown modes dominate the image, leaving k-means with no
-    # budget for a single-cell red. maxcoverage should still pick it up.
     cells = np.zeros((30, 30, 3), dtype=np.float32)
     cells[:10, :] = (120, 80, 40)
     cells[10:20, :] = (150, 100, 60)
     cells[20:, :] = (90, 60, 30)
-    cells[15, 15] = (230, 20, 20)  # single vivid red cell
+    cells[15, 15] = (230, 20, 20)
 
     def dist_to_red(palette):
         red = np.array([230, 20, 20])
@@ -74,8 +85,8 @@ def test_maxcoverage_preserves_rare_vivid_color():
     _, km_palette, _ = quantize_cells(cells, n_colors=3, method="kmeans")
     _, mc_palette, _ = quantize_cells(cells, n_colors=3, method="maxcoverage")
 
-    assert dist_to_red(km_palette) > 100  # k-means ignored the red
-    assert dist_to_red(mc_palette) < 20   # maxcoverage landed on it
+    assert dist_to_red(km_palette) > 100
+    assert dist_to_red(mc_palette) < 20
 
 
 def test_fixed_palette_snaps_to_palette_entries():
@@ -85,7 +96,6 @@ def test_fixed_palette_snaps_to_palette_entries():
     cells[2:, :2] = (10, 10, 250)
     cells[2:, 2:] = (240, 240, 20)
 
-    # Palette close to but not exactly the cell colors, plus noise entries.
     fixed = np.array(
         [
             [255, 0, 0],
@@ -99,15 +109,11 @@ def test_fixed_palette_snaps_to_palette_entries():
     )
     _, out_palette, chosen = quantize_cells(cells, n_colors=4, fixed_palette=fixed)
     assert chosen is not None and chosen.shape == (4,)
-    # Every output color must be an exact entry from the fixed palette.
     fixed_set = {tuple(c) for c in fixed.tolist()}
     for color in out_palette.tolist():
         assert tuple(color) in fixed_set
-    # And the four distinct cells should pick the four pure primaries.
     expected = {(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)}
     assert {tuple(c) for c in out_palette.tolist()} == expected
-
-
 
 
 def test_load_palette_srgb_format(tmp_path):
@@ -128,7 +134,6 @@ def test_load_palette_srgb_format(tmp_path):
 
 def test_load_palette_lab_format_roundtrips_primaries(tmp_path):
     import json as _json
-    # LAB of pure red in D65: ~(53.24, 80.09, 67.20)
     p = tmp_path / "pal.json"
     p.write_text(_json.dumps({
         "name": "Test",
@@ -146,7 +151,6 @@ def test_load_palette_rejects_unknown_space(tmp_path):
     p.write_text(_json.dumps({"name": "t", "color_space": "xyz", "colors": [
         {"code": "1", "color": [0, 0, 0]}
     ]}))
-    import pytest
     with pytest.raises(ValueError):
         load_palette(p)
 
@@ -155,29 +159,26 @@ def test_legend_order_sorts_by_hue():
     from color_grid.render import _legend_order
     palette = np.array(
         [
-            [200, 200, 200],  # light gray
-            [30, 30, 30],     # dark gray
-            [200, 30, 30],    # red
-            [30, 200, 30],    # green
-            [30, 30, 200],    # blue
+            [200, 200, 200],
+            [30, 30, 30],
+            [200, 30, 30],
+            [30, 200, 30],
+            [30, 30, 200],
         ],
         dtype=np.uint8,
     )
     order = _legend_order(palette)
-    # Grays come first, light before dark.
     assert order[:2] == [0, 1]
-    # Chromatic entries follow, sorted by hue (red < green < blue in HSV).
     assert order[2:] == [2, 3, 4]
 
 
-def test_render_page_uses_entry_labels(tmp_path):
+def test_render_page_uses_entry_labels():
     labels = np.array([[0, 1], [1, 0]], dtype=int)
     palette = np.array([[200, 30, 30], [30, 200, 30]], dtype=np.uint8)
-    page_spec = PageSpec(paper="letter", dpi=100)
-    img = render_page(labels, palette, page_spec, entry_labels=["R3", "G5"])
-    assert img.size == page_spec.size_px
+    page_spec = PageSpec(paper="letter")
+    data = render_page(labels, palette, page_spec, entry_labels=["R3", "G5"])
+    assert isinstance(data, bytes) and len(data) > 0
 
-    import pytest
     with pytest.raises(ValueError):
         render_page(labels, palette, page_spec, entry_labels=["only-one"])
 
@@ -186,6 +187,21 @@ def test_a4_and_legal_sizes():
     labels = np.zeros((4, 4), dtype=int)
     palette = np.array([[10, 20, 30]], dtype=np.uint8)
     for paper in ("a4", "legal"):
-        spec = PageSpec(paper=paper, dpi=150)
-        img = render_page(labels, palette, spec)
-        assert img.size == spec.size_px
+        spec = PageSpec(paper=paper)
+        data = render_page(labels, palette, spec)
+        assert isinstance(data, bytes) and len(data) > 0
+        assert data[:5] == b"%PDF-"
+
+
+def test_svg_output_is_valid_xml():
+    labels = np.array([[0, 1], [1, 0]], dtype=int)
+    palette = np.array([[200, 30, 30], [30, 200, 30]], dtype=np.uint8)
+    page_spec = PageSpec(paper="letter")
+
+    svg_data = render_page(labels, palette, page_spec, fmt="svg")
+    root = ET.fromstring(svg_data)
+    assert root.tag == "{http://www.w3.org/2000/svg}svg"
+
+    sol_data = render_solution(labels, palette, page_spec, fmt="svg")
+    root = ET.fromstring(sol_data)
+    assert root.tag == "{http://www.w3.org/2000/svg}svg"

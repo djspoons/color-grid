@@ -49,7 +49,6 @@ from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, 
     show_default=True,
     help="Paper size.",
 )
-@click.option("--dpi", type=int, default=300, show_default=True, help="Output resolution.")
 @click.option(
     "--margin",
     type=float,
@@ -62,7 +61,7 @@ from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, 
     "-o",
     type=click.Path(dir_okay=False, path_type=Path),
     default=None,
-    help="Output path (default: <image>_grid.pdf next to the input). Use .png for an image.",
+    help="Output path (default: <image>_grid.pdf next to the input). Use .svg for SVG.",
 )
 @click.option(
     "--solution/--no-solution",
@@ -78,7 +77,6 @@ def main(
     method: str,
     palette_path: Path | None,
     paper: str,
-    dpi: int,
     margin: float,
     output: Path | None,
     solution: bool,
@@ -87,7 +85,8 @@ def main(
     if output is None:
         output = image_path.with_name(f"{image_path.stem}_grid.pdf")
 
-    page_spec = PageSpec(paper=paper.lower(), dpi=dpi, margin_in=margin)
+    fmt = "svg" if output.suffix.lower() == ".svg" else "pdf"
+    page_spec = PageSpec(paper=paper.lower(), margin_in=margin)
 
     fixed_palette = None
     palette_codes: list[str] | None = None
@@ -114,13 +113,14 @@ def main(
     if chosen_indices is not None and palette_codes is not None:
         entry_labels = [palette_codes[int(i)] for i in chosen_indices]
 
-    page = render_page(labels, palette, page_spec, entry_labels=entry_labels)
-    save_page(page, output, page_spec)
+    data = render_page(labels, palette, page_spec, entry_labels=entry_labels, fmt=fmt)
+    save_page(data, output)
     click.echo(f"wrote {output}")
 
     if solution:
         sol_path = output.with_name(f"{output.stem}_solution{output.suffix}")
-        save_page(render_solution(labels, palette, page_spec), sol_path, page_spec)
+        sol_data = render_solution(labels, palette, page_spec, fmt=fmt)
+        save_page(sol_data, sol_path)
         click.echo(f"wrote {sol_path}")
 
 

@@ -1,8 +1,8 @@
 import colorsys
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
 
 
 PAPER_SIZES_INCHES = {
@@ -16,17 +16,16 @@ PAPER_SIZES_INCHES = {
 @dataclass(frozen=True)
 class PageSpec:
     paper: str
-    dpi: int
     margin_in: float = 0.5
 
     @property
-    def size_px(self) -> tuple[int, int]:
+    def size_pt(self) -> tuple[float, float]:
         w_in, h_in = PAPER_SIZES_INCHES[self.paper]
-        return (round(w_in * self.dpi), round(h_in * self.dpi))
+        return (w_in * 72.0, h_in * 72.0)
 
     @property
-    def margin_px(self) -> int:
-        return round(self.margin_in * self.dpi)
+    def margin_pt(self) -> float:
+        return self.margin_in * 72.0
 
 
 def _legend_order(palette: np.ndarray) -> list[int]:
@@ -48,70 +47,21 @@ def _legend_order(palette: np.ndarray) -> list[int]:
     return [k[-1] for k in keys]
 
 
-def _load_font(size: int) -> ImageFont.ImageFont:
-    for name in ("Helvetica.ttc", "Arial.ttf", "DejaVuSans.ttf"):
-        try:
-            return ImageFont.truetype(name, size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
-
-
-def _load_bold_font(size: int) -> ImageFont.ImageFont:
-    """Prefer a heavy weight for grid-cell numbers so they stay legible even
-    when the underlying color is dark."""
-    for name in (
-        "Arial Black.ttf",
-        "Arial Bold.ttf",
-        "HelveticaBold.ttc",
-        "DejaVuSans-Bold.ttf",
-    ):
-        try:
-            return ImageFont.truetype(name, size)
-        except OSError:
-            continue
-    return _load_font(size)
-
-
-def _fit_font(
-    draw: ImageDraw.ImageDraw,
-    text: str,
-    max_w: int,
-    max_h: int,
-    loader,
-) -> ImageFont.ImageFont:
-    """Binary-search for the largest font size where `text` fits in max_w x max_h."""
-    lo, hi = 10, max(12, max_h)
-    best = loader(lo)
-    while lo <= hi:
-        mid = (lo + hi) // 2
-        font = loader(mid)
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        if tw <= max_w and th <= max_h:
-            best = font
-            lo = mid + 1
-        else:
-            hi = mid - 1
-    return best
-
-
 def _layout(page: PageSpec, grid_w: int, grid_h: int, n_colors: int) -> dict:
-    """Compute cell size and legend geometry that fits on the page."""
-    pw, ph = page.size_px
-    m = page.margin_px
+    """Compute cell size and legend geometry in points (1/72 inch)."""
+    pw, ph = page.size_pt
+    m = page.margin_pt
     avail_w = pw - 2 * m
     avail_h = ph - 2 * m
 
-    swatch = round(0.35 * page.dpi)
-    legend_gap = round(0.12 * page.dpi)
-    legend_label_w = round(0.55 * page.dpi)
+    swatch = 0.35 * 72.0
+    legend_gap = 0.12 * 72.0
+    legend_label_w = 0.55 * 72.0
     legend_col_w = swatch + legend_label_w
-    legend_cols = max(1, avail_w // legend_col_w)
+    legend_cols = max(1, int(avail_w // legend_col_w))
     legend_rows = (n_colors + legend_cols - 1) // legend_cols
     legend_h = legend_rows * swatch + (legend_rows - 1) * legend_gap
-    grid_legend_gap = round(0.3 * page.dpi)
+    grid_legend_gap = 0.3 * 72.0
 
     grid_area_h = avail_h - legend_h - grid_legend_gap
     if grid_area_h <= 0:
@@ -120,23 +70,23 @@ def _layout(page: PageSpec, grid_w: int, grid_h: int, n_colors: int) -> dict:
             "reduce colors or use larger paper."
         )
 
-    cell_px = min(avail_w // grid_w, grid_area_h // grid_h)
-    if cell_px < 10:
+    cell_pt = min(avail_w / grid_w, grid_area_h / grid_h)
+    if cell_pt < 10 * (72.0 / 300.0):
         raise ValueError(
-            f"grid {grid_w}x{grid_h} is too large for {page.paper} at {page.dpi} dpi"
+            f"grid {grid_w}x{grid_h} is too large for {page.paper}"
         )
 
-    grid_px_w = cell_px * grid_w
-    grid_px_h = cell_px * grid_h
-    grid_x = (pw - grid_px_w) // 2
+    grid_px_w = cell_pt * grid_w
+    grid_px_h = cell_pt * grid_h
+    grid_x = (pw - grid_px_w) / 2.0
     grid_y = m
 
     legend_y = grid_y + grid_px_h + grid_legend_gap
     legend_total_w = legend_cols * legend_col_w
-    legend_x = (pw - legend_total_w) // 2
+    legend_x = (pw - legend_total_w) / 2.0
 
     return {
-        "cell_px": cell_px,
+        "cell_pt": cell_pt,
         "grid_x": grid_x,
         "grid_y": grid_y,
         "swatch": swatch,
@@ -153,12 +103,15 @@ def render_page(
     palette: np.ndarray,
     page: PageSpec,
     entry_labels: list[str] | None = None,
-) -> Image.Image:
+    fmt: str = "pdf",
+) -> bytes:
     """Render a printable color-by-number page.
 
     `entry_labels`, if provided, is a length-n list of strings — one per
     palette entry — used in both the grid cells and the legend. Defaults to
     "1".."n".
+
+    `fmt` is "pdf" or "svg".
     """
     h, w = labels.shape
     n_colors = len(palette)
@@ -169,90 +122,38 @@ def render_page(
             f"entry_labels has {len(entry_labels)} items but palette has {n_colors}"
         )
     lay = _layout(page, w, h, n_colors)
-
-    cell = lay["cell_px"]
-    border = max(1, round(cell * 0.04))
-
-    img = Image.new("RGB", page.size_px, "white")
-    draw = ImageDraw.Draw(img)
-
-    longest_text = max(entry_labels, key=len)
-    inner = int(cell * 0.78)
-    number_font = _fit_font(draw, longest_text, inner, inner, _load_bold_font)
-
-    gx, gy = lay["grid_x"], lay["grid_y"]
-    for row in range(h):
-        for col in range(w):
-            x0 = gx + col * cell
-            y0 = gy + row * cell
-            x1 = x0 + cell
-            y1 = y0 + cell
-            draw.rectangle([x0, y0, x1, y1], outline="black", width=border)
-
-            text = entry_labels[int(labels[row, col])]
-            bbox = draw.textbbox((0, 0), text, font=number_font)
-            tw = bbox[2] - bbox[0]
-            th = bbox[3] - bbox[1]
-            tx = x0 + (cell - tw) // 2 - bbox[0]
-            ty = y0 + (cell - th) // 2 - bbox[1]
-            draw.text((tx, ty), text, fill="black", font=number_font)
-
-    swatch = lay["swatch"]
-    legend_font = _load_font(max(10, swatch // 2))
     order = _legend_order(palette)
-    for slot, i in enumerate(order):
-        color = palette[i]
-        col = slot % lay["legend_cols"]
-        row = slot // lay["legend_cols"]
-        x0 = lay["legend_x"] + col * lay["legend_col_w"]
-        y0 = lay["legend_y"] + row * (swatch + lay["legend_gap"])
-        draw.rectangle(
-            [x0, y0, x0 + swatch, y0 + swatch],
-            fill=tuple(int(c) for c in color),
-            outline="black",
-            width=border,
-        )
-        draw.text(
-            (x0 + swatch + swatch // 4, y0 + swatch // 4),
-            entry_labels[i],
-            fill="black",
-            font=legend_font,
-        )
 
-    return img
+    if fmt == "svg":
+        from ._backend_svg import render_page_svg
+
+        return render_page_svg(labels, palette, lay, page, entry_labels, order)
+    else:
+        from ._backend_pdf import render_page_pdf
+
+        return render_page_pdf(labels, palette, lay, page, entry_labels, order)
 
 
-def render_solution(labels: np.ndarray, palette: np.ndarray, page: PageSpec) -> Image.Image:
+def render_solution(
+    labels: np.ndarray,
+    palette: np.ndarray,
+    page: PageSpec,
+    fmt: str = "pdf",
+) -> bytes:
     """Render a filled-in preview on the same page spec."""
     h, w = labels.shape
     lay = _layout(page, w, h, len(palette))
-    cell = lay["cell_px"]
-    border = max(1, round(cell * 0.04))
 
-    img = Image.new("RGB", page.size_px, "white")
-    draw = ImageDraw.Draw(img)
+    if fmt == "svg":
+        from ._backend_svg import render_solution_svg
 
-    gx, gy = lay["grid_x"], lay["grid_y"]
-    for row in range(h):
-        for col in range(w):
-            x0 = gx + col * cell
-            y0 = gy + row * cell
-            color = tuple(int(c) for c in palette[int(labels[row, col])])
-            draw.rectangle(
-                [x0, y0, x0 + cell, y0 + cell],
-                fill=color,
-                outline="black",
-                width=border,
-            )
-    return img
-
-
-def save_page(image: Image.Image, path, page: PageSpec) -> None:
-    """Save as PDF (default) or PNG based on the path suffix."""
-    suffix = path.suffix.lower()
-    if suffix == ".pdf" or suffix == "":
-        if suffix == "":
-            path = path.with_suffix(".pdf")
-        image.save(path, "PDF", resolution=page.dpi)
+        return render_solution_svg(labels, palette, lay, page)
     else:
-        image.save(path, dpi=(page.dpi, page.dpi))
+        from ._backend_pdf import render_solution_pdf
+
+        return render_solution_pdf(labels, palette, lay, page)
+
+
+def save_page(data: bytes, path: Path) -> None:
+    """Write rendered page bytes to disk."""
+    path.write_bytes(data)
