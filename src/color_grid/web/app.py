@@ -1,6 +1,7 @@
 """FastAPI application for the color-grid web UI."""
 
 import io
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request, UploadFile
@@ -17,7 +18,10 @@ from ..render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution
 from .state import Session, create_session, get_session
 
 _WEB_DIR = Path(__file__).resolve().parent
-_PALETTES_DIR = _WEB_DIR.parent.parent.parent / "palettes"
+_PALETTES_DIR = Path(os.environ.get(
+    "COLORGRID_PALETTES_DIR",
+    _WEB_DIR.parent.parent.parent / "palettes",
+))
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 
