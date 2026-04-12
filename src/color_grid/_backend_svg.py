@@ -14,7 +14,8 @@ def render_page_svg(
     palette: np.ndarray,
     lay: dict,
     page,
-    entry_labels: list[str],
+    keys: list[str],
+    codes: list[str] | None,
     order: list[int],
 ) -> bytes:
     """Render a color-by-number page as SVG. Returns UTF-8 bytes."""
@@ -47,14 +48,12 @@ def render_page_svg(
         for col in range(w):
             x0 = gx + col * cell
             y0 = gy + row * cell
-            # cell border
             parts.append(
                 f'<rect x="{x0:.2f}" y="{y0:.2f}" '
                 f'width="{cell:.2f}" height="{cell:.2f}" '
                 f'fill="white" stroke="black" stroke-width="{border:.2f}"/>'
             )
-            # centered text
-            text = escape(entry_labels[int(labels[row, col])])
+            text = escape(keys[int(labels[row, col])])
             cx = x0 + cell / 2.0
             cy = y0 + cell / 2.0
             parts.append(
@@ -66,6 +65,7 @@ def render_page_svg(
     # --- Legend ---
     swatch = lay["swatch"]
     legend_font_size = max(8.0, swatch / 2.0)
+    key_col_w = swatch * 0.6
 
     for slot, i in enumerate(order):
         color = palette[i]
@@ -81,17 +81,29 @@ def render_page_svg(
             f'fill="{_svg_color(color)}" stroke="black" '
             f'stroke-width="{border:.2f}"/>'
         )
-        # label
-        lx = x0 + swatch + swatch / 4.0
-        ly = y0 + swatch / 2.0
-        label_text = escape(entry_labels[i])
+
+        # key
+        kx = x0 + swatch + swatch / 4.0
+        ky = y0 + swatch / 2.0
         parts.append(
-            f'<text x="{lx:.2f}" y="{ly:.2f}" '
+            f'<text x="{kx:.2f}" y="{ky:.2f}" '
             f'font-size="{legend_font_size:.2f}" '
             f'font-family="Helvetica, Arial, sans-serif" '
             f'dominant-baseline="central">'
-            f'{label_text}</text>'
+            f'{escape(keys[i])}</text>'
         )
+
+        # code (if available)
+        if codes is not None:
+            cx = kx + key_col_w
+            code_font_size = legend_font_size * 0.85
+            parts.append(
+                f'<text x="{cx:.2f}" y="{ky:.2f}" '
+                f'font-size="{code_font_size:.2f}" '
+                f'font-family="Helvetica, Arial, sans-serif" '
+                f'dominant-baseline="central" fill="#666">'
+                f'{escape(codes[i])}</text>'
+            )
 
     parts.append("</svg>")
     return "\n".join(parts).encode("utf-8")

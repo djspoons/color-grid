@@ -152,14 +152,14 @@ async def generate(
         paper = "letter"
 
     fixed_palette = None
-    palette_codes = None
+    palette_names = None
     if palette_name != "none":
         pal_path = _PALETTES_DIR / palette_name
         if not pal_path.is_file():
             return _error(request, f"Palette file not found: {palette_name}")
         pal = load_palette(pal_path)
         fixed_palette = pal.rgb
-        palette_codes = pal.codes
+        palette_names = pal.color_names
         colors = min(colors, len(fixed_palette))
 
     try:
@@ -177,15 +177,15 @@ async def generate(
     except ValueError as e:
         return _error(request, str(e))
 
-    entry_labels = None
-    if chosen_indices is not None and palette_codes is not None:
-        entry_labels = [palette_codes[int(i)] for i in chosen_indices]
+    codes = None
+    if chosen_indices is not None and palette_names is not None:
+        codes = [palette_names[int(i)] for i in chosen_indices]
 
     page_spec = PageSpec(paper=paper, margin_in=margin)
 
     try:
         grid_svg = await run_in_threadpool(
-            render_page, labels, palette, page_spec, entry_labels, "svg", lw
+            render_page, labels, palette, page_spec, None, codes, "svg", lw
         )
         solution_svg = await run_in_threadpool(
             render_solution, labels, palette, page_spec, "svg", lw
@@ -195,7 +195,7 @@ async def generate(
 
     session.labels = labels
     session.palette = palette
-    session.entry_labels = entry_labels
+    session.codes = codes
     session.page_spec = page_spec
     session.line_width = lw
 
@@ -220,7 +220,8 @@ async def download_grid_pdf(request: Request):
         session.labels,
         session.palette,
         session.page_spec,
-        session.entry_labels,
+        None,
+        session.codes,
         "pdf",
         session.line_width,
     )

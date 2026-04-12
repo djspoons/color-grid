@@ -21,7 +21,7 @@ class Session:
     image: Image.Image | None = None
     labels: np.ndarray | None = None
     palette: np.ndarray | None = None
-    entry_labels: list[str] | None = None
+    codes: list[str] | None = None
     page_spec: PageSpec | None = None
     line_width: float | None = None
     created_at: float = field(default_factory=time.time)

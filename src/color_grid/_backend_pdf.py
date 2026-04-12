@@ -3,7 +3,6 @@
 import io
 
 import numpy as np
-from reportlab.lib.pagesizes import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 
@@ -16,7 +15,6 @@ def _fit_font_size(text: str, max_w: float, max_h: float, font_name: str) -> flo
     while hi - lo > 0.5:
         mid = (lo + hi) / 2.0
         tw = pdfmetrics.stringWidth(text, font_name, mid)
-        # Use ascent + descent from font metrics for height
         th = (face.ascent - face.descent) / 1000.0 * mid
         if tw <= max_w and th <= max_h:
             best = mid
@@ -31,7 +29,8 @@ def render_page_pdf(
     palette: np.ndarray,
     lay: dict,
     page,
-    entry_labels: list[str],
+    keys: list[str],
+    codes: list[str] | None,
     order: list[int],
 ) -> bytes:
     """Render a color-by-number page as a vector PDF. Returns PDF bytes."""
@@ -45,10 +44,10 @@ def render_page_pdf(
     c = canvas.Canvas(buf, pagesize=(pw, ph))
 
     # --- Grid ---
-    longest_text = max(entry_labels, key=len)
+    longest_key = max(keys, key=len)
     inner = cell * 0.78
     font_name = "Helvetica"
-    font_size = _fit_font_size(longest_text, inner, inner, font_name)
+    font_size = _fit_font_size(longest_key, inner, inner, font_name)
     c.setFont(font_name, font_size)
     c.setLineWidth(border)
 
@@ -61,14 +60,11 @@ def render_page_pdf(
         for col in range(w):
             x0 = gx + col * cell
             y0_top = gy_top + row * cell
-            # reportlab y: bottom-left origin
             y0_rl = ph - y0_top - cell
-            # cell border
             c.setStrokeColorRGB(0, 0, 0)
             c.setFillColorRGB(1, 1, 1)
             c.rect(x0, y0_rl, cell, cell, stroke=1, fill=1)
-            # centered text
-            text = entry_labels[int(labels[row, col])]
+            text = keys[int(labels[row, col])]
             tw = pdfmetrics.stringWidth(text, font_name, font_size)
             tx = x0 + (cell - tw) / 2.0
             ty = y0_rl + (cell - text_h) / 2.0 - descent_pt
@@ -79,14 +75,16 @@ def render_page_pdf(
     swatch = lay["swatch"]
     legend_font_name = "Helvetica"
     legend_font_size = max(8.0, swatch / 2.0)
-    c.setFont(legend_font_name, legend_font_size)
+
+    # Measure key column width (fixed for alignment).
+    key_col_w = swatch * 0.6
 
     for slot, i in enumerate(order):
         color = palette[i]
-        col = slot % lay["legend_cols"]
-        row = slot // lay["legend_cols"]
-        x0 = lay["legend_x"] + col * lay["legend_col_w"]
-        y0_top = lay["legend_y"] + row * (swatch + lay["legend_gap"])
+        col_idx = slot % lay["legend_cols"]
+        row_idx = slot // lay["legend_cols"]
+        x0 = lay["legend_x"] + col_idx * lay["legend_col_w"]
+        y0_top = lay["legend_y"] + row_idx * (swatch + lay["legend_gap"])
         y0_rl = ph - y0_top - swatch
 
         # swatch
@@ -95,12 +93,18 @@ def render_page_pdf(
         c.setLineWidth(border)
         c.rect(x0, y0_rl, swatch, swatch, stroke=1, fill=1)
 
-        # label
+        # key
         c.setFillColorRGB(0, 0, 0)
         c.setFont(legend_font_name, legend_font_size)
-        lx = x0 + swatch + swatch / 4.0
-        ly = y0_rl + swatch / 4.0
-        c.drawString(lx, ly, entry_labels[i])
+        kx = x0 + swatch + swatch / 4.0
+        ky = y0_rl + swatch / 4.0
+        c.drawString(kx, ky, keys[i])
+
+        # code (if available)
+        if codes is not None:
+            c.setFont(legend_font_name, legend_font_size * 0.85)
+            cx = kx + key_col_w
+            c.drawString(cx, ky, codes[i])
 
     c.save()
     return buf.getvalue()

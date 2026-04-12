@@ -123,12 +123,12 @@ def test_load_palette_srgb_format(tmp_path):
         "name": "Test",
         "color_space": "srgb",
         "colors": [
-            {"code": "A", "color": [255, 0, 0]},
-            {"code": "B", "color": [0, 255, 0]},
+            {"name": "A", "color": [255, 0, 0]},
+            {"name": "B", "color": [0, 255, 0]},
         ],
     }))
     pal = load_palette(p)
-    assert pal.codes == ["A", "B"]
+    assert pal.color_names == ["A", "B"]
     assert pal.rgb.tolist() == [[255, 0, 0], [0, 255, 0]]
 
 
@@ -138,7 +138,7 @@ def test_load_palette_lab_format_roundtrips_primaries(tmp_path):
     p.write_text(_json.dumps({
         "name": "Test",
         "color_space": "lab",
-        "colors": [{"code": "R", "color": [53.24, 80.09, 67.20]}],
+        "colors": [{"name": "R", "color": [53.24, 80.09, 67.20]}],
     }))
     pal = load_palette(p)
     r, g, b = pal.rgb[0]
@@ -149,7 +149,7 @@ def test_load_palette_rejects_unknown_space(tmp_path):
     import json as _json
     p = tmp_path / "pal.json"
     p.write_text(_json.dumps({"name": "t", "color_space": "xyz", "colors": [
-        {"code": "1", "color": [0, 0, 0]}
+        {"name": "1", "color": [0, 0, 0]}
     ]}))
     with pytest.raises(ValueError):
         load_palette(p)
@@ -174,15 +174,22 @@ def test_legend_order_groups_similar_colors():
     assert max(blue_positions) - min(blue_positions) == 1
 
 
-def test_render_page_uses_entry_labels():
+def test_render_page_keys_and_codes():
     labels = np.array([[0, 1], [1, 0]], dtype=int)
     palette = np.array([[200, 30, 30], [30, 200, 30]], dtype=np.uint8)
     page_spec = PageSpec(paper="letter")
-    data = render_page(labels, palette, page_spec, entry_labels=["R3", "G5"])
+
+    # Auto-assigned keys (no explicit keys)
+    data = render_page(labels, palette, page_spec)
     assert isinstance(data, bytes) and len(data) > 0
 
+    # Explicit keys + codes
+    data = render_page(labels, palette, page_spec, keys=["R", "G"], codes=["Red", "Green"])
+    assert isinstance(data, bytes) and len(data) > 0
+
+    # Wrong number of keys
     with pytest.raises(ValueError):
-        render_page(labels, palette, page_spec, entry_labels=["only-one"])
+        render_page(labels, palette, page_spec, keys=["X"])
 
 
 def test_a4_and_legal_sizes():

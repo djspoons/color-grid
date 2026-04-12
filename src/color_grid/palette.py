@@ -5,7 +5,7 @@ Schema:
         "name": "<display name>",
         "color_space": "srgb" | "lab" | "ciecam16_ucs",
         "colors": [
-            {"code": "<short label>", "color": [<3 numbers>]},
+            {"name": "<color name>", "color": [<3 numbers>]},
             ...
         ]
     }
@@ -33,7 +33,7 @@ _VALID_SPACES = ("srgb", "lab", "ciecam16_ucs")
 class Palette:
     name: str
     rgb: np.ndarray  # (P, 3) uint8
-    codes: list[str]
+    color_names: list[str]
 
 
 def load_palette(path: Path) -> Palette:
@@ -53,11 +53,11 @@ def load_palette(path: Path) -> Palette:
     if not isinstance(entries, list) or not entries:
         raise ValueError(f"{path}: 'colors' must be a non-empty array")
 
-    codes: list[str] = []
+    color_names: list[str] = []
     values: list[list[float]] = []
     for i, entry in enumerate(entries):
         try:
-            codes.append(str(entry["code"]))
+            color_names.append(str(entry["name"]))
             color = entry["color"]
             if len(color) != 3:
                 raise ValueError("expected 3 components")
@@ -67,7 +67,7 @@ def load_palette(path: Path) -> Palette:
 
     arr = np.asarray(values, dtype=np.float64)
     rgb = _to_srgb_u8(arr, space)
-    return Palette(name=name, rgb=rgb, codes=codes)
+    return Palette(name=name, rgb=rgb, color_names=color_names)
 
 
 def _to_srgb_u8(values: np.ndarray, color_space: str) -> np.ndarray:

@@ -110,11 +110,11 @@ def main(
     page_spec = PageSpec(paper=paper.lower(), margin_in=margin)
 
     fixed_palette = None
-    palette_codes: list[str] | None = None
+    palette_names: list[str] | None = None
     if palette_path is not None:
         pal = load_palette(palette_path)
         fixed_palette = pal.rgb
-        palette_codes = pal.codes
+        palette_names = pal.color_names
         if colors is None:
             colors = len(fixed_palette)
         elif colors > len(fixed_palette):
@@ -132,11 +132,11 @@ def main(
         fixed_palette=fixed_palette,
     )
 
-    entry_labels = None
-    if chosen_indices is not None and palette_codes is not None:
-        entry_labels = [palette_codes[int(i)] for i in chosen_indices]
+    codes = None
+    if chosen_indices is not None and palette_names is not None:
+        codes = [palette_names[int(i)] for i in chosen_indices]
 
-    data = render_page(labels, palette, page_spec, entry_labels=entry_labels, fmt=fmt, line_width=line_width)
+    data = render_page(labels, palette, page_spec, codes=codes, fmt=fmt, line_width=line_width)
     save_page(data, output)
     click.echo(f"wrote {output}")
 

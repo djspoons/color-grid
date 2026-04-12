@@ -65,7 +65,7 @@ def _layout(page: PageSpec, grid_w: int, grid_h: int, n_colors: int) -> dict:
 
     swatch = 0.35 * 72.0
     legend_gap = 0.12 * 72.0
-    legend_label_w = 0.55 * 72.0
+    legend_label_w = 1.2 * 72.0
     legend_col_w = swatch + legend_label_w
     legend_cols = max(1, int(avail_w // legend_col_w))
     legend_rows = (n_colors + legend_cols - 1) // legend_cols
@@ -111,28 +111,33 @@ def render_page(
     labels: np.ndarray,
     palette: np.ndarray,
     page: PageSpec,
-    entry_labels: list[str] | None = None,
+    keys: list[str] | None = None,
+    codes: list[str] | None = None,
     fmt: str = "pdf",
     line_width: float | None = None,
 ) -> bytes:
     """Render a printable color-by-number page.
 
-    `entry_labels`, if provided, is a length-n list of strings — one per
-    palette entry — used in both the grid cells and the legend. Defaults to
-    "1".."n".
+    `keys` is a length-n list of single-character strings used in grid cells
+    and the legend. If None, defaults to assign_keys(palette).
+
+    `codes`, if provided, is a length-n list of longer labels (e.g. palette
+    color names) shown alongside the key in the legend.
 
     `fmt` is "pdf" or "svg".
 
     `line_width`, if provided, sets the grid line width in points. Defaults to
     auto-scaling based on cell size.
     """
+    from .keys import assign_keys
+
     h, w = labels.shape
     n_colors = len(palette)
-    if entry_labels is None:
-        entry_labels = [str(i + 1) for i in range(n_colors)]
-    elif len(entry_labels) != n_colors:
+    if keys is None:
+        keys = assign_keys(palette)
+    elif len(keys) != n_colors:
         raise ValueError(
-            f"entry_labels has {len(entry_labels)} items but palette has {n_colors}"
+            f"keys has {len(keys)} items but palette has {n_colors}"
         )
     lay = _layout(page, w, h, n_colors)
     lay["line_width"] = line_width
@@ -141,11 +146,11 @@ def render_page(
     if fmt == "svg":
         from ._backend_svg import render_page_svg
 
-        return render_page_svg(labels, palette, lay, page, entry_labels, order)
+        return render_page_svg(labels, palette, lay, page, keys, codes, order)
     else:
         from ._backend_pdf import render_page_pdf
 
-        return render_page_pdf(labels, palette, lay, page, entry_labels, order)
+        return render_page_pdf(labels, palette, lay, page, keys, codes, order)
 
 
 def render_solution(
