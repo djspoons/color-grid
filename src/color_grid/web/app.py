@@ -99,6 +99,8 @@ async def upload(request: Request, image: UploadFile):
 
     img = img.convert("RGB")
     session.image = img
+    if image.filename:
+        session.image_stem = Path(image.filename).stem
     session.labels = None
     session.palette = None
 
@@ -116,9 +118,10 @@ async def generate(
     width: int = Form(20),
     height: int = Form(20),
     colors: int = Form(8),
+    color_mode: str = Form("count"),
     color_space: str = Form("lab"),
     method: str = Form("maxcoverage"),
-    palette_name: str = Form("none"),
+    palette_name: str = Form(""),
     paper: str = Form("letter"),
     margin: float = Form(0.5),
 ):
@@ -126,8 +129,8 @@ async def generate(
     if session is None or session.image is None:
         return _error(request, "Please upload an image first.")
 
-    width = int(_clamp(width, 2, 80))
-    height = int(_clamp(height, 2, 80))
+    width = int(_clamp(width, 12, 72))
+    height = int(_clamp(height, 12, 72))
     colors = int(_clamp(colors, 2, 30))
     margin = float(_clamp(margin, 0.1, 2.0))
 
@@ -140,17 +143,14 @@ async def generate(
 
     fixed_palette = None
     palette_codes = None
-    if palette_name != "none":
+    if color_mode == "palette" and palette_name:
         pal_path = _PALETTES_DIR / palette_name
-        if pal_path.is_file():
-            pal = load_palette(pal_path)
-            fixed_palette = pal.rgb
-            palette_codes = pal.codes
-            if len(fixed_palette) < colors:
-                return _error(
-                    request,
-                    f"Palette has {len(fixed_palette)} colors but you requested {colors}.",
-                )
+        if not pal_path.is_file():
+            return _error(request, f"Palette file not found: {palette_name}")
+        pal = load_palette(pal_path)
+        fixed_palette = pal.rgb
+        palette_codes = pal.codes
+        colors = len(fixed_palette)
 
     try:
         cells = await run_in_threadpool(
@@ -215,7 +215,7 @@ async def download_grid_pdf(request: Request):
     return Response(
         content=pdf_data,
         media_type="application/pdf",
-        headers={"Content-Disposition": "attachment; filename=colorgrid.pdf"},
+        headers={"Content-Disposition": f"attachment; filename={session.image_stem}_grid.pdf"},
     )
 
 
@@ -235,5 +235,5 @@ async def download_solution_pdf(request: Request):
     return Response(
         content=pdf_data,
         media_type="application/pdf",
-        headers={"Content-Disposition": "attachment; filename=colorgrid_solution.pdf"},
+        headers={"Content-Disposition": f"attachment; filename={session.image_stem}_solution.pdf"},
     )

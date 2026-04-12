@@ -13,7 +13,20 @@ from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, 
 @click.argument("image_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--width", "-w", type=int, required=True, help="Grid width in cells.")
 @click.option("--height", "-h", type=int, required=True, help="Grid height in cells.")
-@click.option("--colors", "-c", type=int, required=True, help="Number of palette colors.")
+@click.option(
+    "--colors",
+    "-c",
+    type=int,
+    default=None,
+    help="Number of colors (omit when using --palette to use all palette colors).",
+)
+@click.option(
+    "--palette",
+    "palette_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Use a fixed palette JSON file — all palette colors are used (see palettes/).",
+)
 @click.option(
     "--color-space",
     type=click.Choice(["rgb", "lab", "ciecam16"], case_sensitive=False),
@@ -24,13 +37,6 @@ from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, 
         "lab is a good default; ciecam16 (CIECAM16-UCS) is the most "
         "perceptually accurate but slower and requires colour-science."
     ),
-)
-@click.option(
-    "--palette",
-    "palette_path",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    default=None,
-    help="Snap output colors to entries in a fixed palette JSON file (see palettes/).",
 )
 @click.option(
     "--method",
@@ -72,16 +78,25 @@ def main(
     image_path: Path,
     width: int,
     height: int,
-    colors: int,
+    colors: int | None,
+    palette_path: Path | None,
     color_space: str,
     method: str,
-    palette_path: Path | None,
     paper: str,
     margin: float,
     output: Path | None,
     solution: bool,
 ) -> None:
-    """Generate a printable color-by-number grid page from IMAGE_PATH."""
+    """Generate a printable color-by-number grid page from IMAGE_PATH.
+
+    Specify either --colors for auto-quantized colors, or --palette to use all
+    colors from a palette file.
+    """
+    if colors is None and palette_path is None:
+        raise click.UsageError("Provide either --colors/-c or --palette.")
+    if colors is not None and palette_path is not None:
+        raise click.UsageError("Use --colors or --palette, not both.")
+
     if output is None:
         output = image_path.with_name(f"{image_path.stem}_grid.pdf")
 
@@ -94,10 +109,7 @@ def main(
         pal = load_palette(palette_path)
         fixed_palette = pal.rgb
         palette_codes = pal.codes
-        if len(fixed_palette) < colors:
-            raise click.BadParameter(
-                f"palette has {len(fixed_palette)} colors but --colors={colors}"
-            )
+        colors = len(fixed_palette)
 
     image = Image.open(image_path)
     cells = image_to_cell_colors(image, width, height)

@@ -17,6 +17,7 @@ _store: dict[str, "Session"] = {}
 @dataclass
 class Session:
     id: str
+    image_stem: str = "colorgrid"
     image: Image.Image | None = None
     labels: np.ndarray | None = None
     palette: np.ndarray | None = None

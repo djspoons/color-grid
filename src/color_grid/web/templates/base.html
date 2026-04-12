@@ -15,5 +15,27 @@
     <main>
         {% block content %}{% endblock %}
     </main>
+    <script>
+    window.imageAspect = 1;
+    function clampGrid(v) { return Math.max(12, Math.min(72, Math.round(v))); }
+    function onWidthChange(v) {
+        v = parseInt(v);
+        document.getElementById('width-val').textContent = v;
+        if (document.getElementById('lock-aspect').checked && window.imageAspect) {
+            var h = clampGrid(v / window.imageAspect);
+            document.getElementById('height').value = h;
+            document.getElementById('height-val').textContent = h;
+        }
+    }
+    function onHeightChange(v) {
+        v = parseInt(v);
+        document.getElementById('height-val').textContent = v;
+        if (document.getElementById('lock-aspect').checked && window.imageAspect) {
+            var w = clampGrid(v * window.imageAspect);
+            document.getElementById('width').value = w;
+            document.getElementById('width-val').textContent = w;
+        }
+    }
+    </script>
 </body>
 </html>
