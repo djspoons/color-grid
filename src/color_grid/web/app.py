@@ -122,10 +122,9 @@ async def generate(
     width: int = Form(20),
     height: int = Form(20),
     colors: int = Form(8),
-    color_mode: str = Form("count"),
     color_space: str = Form("lab"),
     method: str = Form("maxcoverage"),
-    palette_name: str = Form(""),
+    palette_name: str = Form("none"),
     paper: str = Form("letter"),
     margin: float = Form(0.5),
 ):
@@ -147,14 +146,14 @@ async def generate(
 
     fixed_palette = None
     palette_codes = None
-    if color_mode == "palette" and palette_name:
+    if palette_name != "none":
         pal_path = _PALETTES_DIR / palette_name
         if not pal_path.is_file():
             return _error(request, f"Palette file not found: {palette_name}")
         pal = load_palette(pal_path)
         fixed_palette = pal.rgb
         palette_codes = pal.codes
-        colors = len(fixed_palette)
+        colors = min(colors, len(fixed_palette))
 
     try:
         cells = await run_in_threadpool(

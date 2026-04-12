@@ -45,28 +45,24 @@
 
                 <fieldset>
                     <legend>Colors</legend>
-                    <div class="color-option">
-                        <label>
-                            <input type="radio" name="color_mode" value="count" checked
-                                   onchange="document.getElementById('colors').disabled=false;document.getElementById('palette_name').disabled=true;">
-                            Number
-                        </label>
-                        <input id="colors" name="colors" type="number" value="8" min="2" max="30">
+                    <div class="field">
+                        <label for="colors">Max colors <output id="colors-val">8</output></label>
+                        <input id="colors" name="colors" type="range" value="8" min="2" max="30"
+                               oninput="document.getElementById('colors-val').textContent=this.value">
                     </div>
-                    <div class="color-option">
-                        <label>
-                            <input type="radio" name="color_mode" value="palette"
-                                   onchange="document.getElementById('colors').disabled=true;document.getElementById('palette_name').disabled=false;"
-                                   {{ "" if palettes else "disabled" }}>
-                            Palette
-                        </label>
-                        <select id="palette_name" name="palette_name" disabled>
+                    <div class="field">
+                        <label for="palette_name">Palette</label>
+                        <select id="palette_name" name="palette_name">
+                            <option value="none" selected>None (auto)</option>
                             {% for p in palettes %}
                             <option value="{{ p.filename }}">{{ p.label }}</option>
                             {% endfor %}
                         </select>
                     </div>
                 </fieldset>
+
+                <button id="generate-btn" type="submit">Generate Preview</button>
+                <div id="spinner" class="htmx-indicator">Processing&hellip;</div>
 
                 <details class="advanced">
                     <summary>Advanced</summary>
@@ -111,8 +107,6 @@
                     </fieldset>
                 </details>
 
-                <button id="generate-btn" type="submit">Generate Preview</button>
-                <div id="spinner" class="htmx-indicator">Processing&hellip;</div>
               </fieldset>
             </form>
         </div>

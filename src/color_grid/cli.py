@@ -18,14 +18,14 @@ from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, 
     "-c",
     type=int,
     default=None,
-    help="Number of colors (omit when using --palette to use all palette colors).",
+    help="Max number of colors. Required without --palette; with --palette defaults to all.",
 )
 @click.option(
     "--palette",
     "palette_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
-    help="Use a fixed palette JSON file — all palette colors are used (see palettes/).",
+    help="Use a fixed palette JSON file (see palettes/). Use --colors to limit.",
 )
 @click.option(
     "--color-space",
@@ -89,13 +89,12 @@ def main(
 ) -> None:
     """Generate a printable color-by-number grid page from IMAGE_PATH.
 
-    Specify either --colors for auto-quantized colors, or --palette to use all
-    colors from a palette file.
+    Specify --colors for the number of colors, and/or --palette to snap to a
+    fixed palette. With --palette, --colors limits how many palette entries to
+    use (defaults to all).
     """
     if colors is None and palette_path is None:
-        raise click.UsageError("Provide either --colors/-c or --palette.")
-    if colors is not None and palette_path is not None:
-        raise click.UsageError("Use --colors or --palette, not both.")
+        raise click.UsageError("Provide --colors/-c, --palette, or both.")
 
     if output is None:
         output = image_path.with_name(f"{image_path.stem}_grid.pdf")
@@ -109,7 +108,12 @@ def main(
         pal = load_palette(palette_path)
         fixed_palette = pal.rgb
         palette_codes = pal.codes
-        colors = len(fixed_palette)
+        if colors is None:
+            colors = len(fixed_palette)
+        elif colors > len(fixed_palette):
+            raise click.BadParameter(
+                f"palette has {len(fixed_palette)} colors but --colors={colors}"
+            )
 
     image = Image.open(image_path)
     cells = image_to_cell_colors(image, width, height)
