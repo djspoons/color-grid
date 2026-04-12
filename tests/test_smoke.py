@@ -155,21 +155,23 @@ def test_load_palette_rejects_unknown_space(tmp_path):
         load_palette(p)
 
 
-def test_legend_order_sorts_by_hue():
+def test_legend_order_groups_similar_colors():
     from color_grid.render import _legend_order
     palette = np.array(
         [
-            [200, 200, 200],
-            [30, 30, 30],
-            [200, 30, 30],
-            [30, 200, 30],
-            [30, 30, 200],
+            [200, 30, 30],    # 0: red
+            [220, 50, 50],    # 1: similar red
+            [30, 30, 200],    # 2: blue
+            [50, 50, 220],    # 3: similar blue
         ],
         dtype=np.uint8,
     )
     order = _legend_order(palette)
-    assert order[:2] == [0, 1]
-    assert order[2:] == [2, 3, 4]
+    # The two reds should be adjacent, and the two blues should be adjacent.
+    red_positions = {order.index(0), order.index(1)}
+    blue_positions = {order.index(2), order.index(3)}
+    assert max(red_positions) - min(red_positions) == 1
+    assert max(blue_positions) - min(blue_positions) == 1
 
 
 def test_render_page_uses_entry_labels():

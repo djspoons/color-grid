@@ -1,8 +1,8 @@
-import colorsys
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from skimage.color import rgb2lab
 
 
 PAPER_SIZES_INCHES = {
@@ -29,22 +29,31 @@ class PageSpec:
 
 
 def _legend_order(palette: np.ndarray) -> list[int]:
-    """Order legend entries so colorers can find a swatch quickly.
+    """Order legend entries by nearest-neighbor walk in CIELAB space.
 
-    Low-saturation entries (grays) are grouped first, light-to-dark, so they
-    don't land randomly among the chromatic colors. The rest are sorted by
-    hue, then by saturation and value as tiebreakers.
+    Starts from the lightest color and greedily picks the closest unvisited
+    color, so perceptually similar colors end up adjacent in the legend.
     """
-    keys: list[tuple] = []
-    for i, rgb in enumerate(palette):
-        r, g, b = [float(c) / 255.0 for c in rgb]
-        h, s, v = colorsys.rgb_to_hsv(r, g, b)
-        if s < 0.15:
-            keys.append((0, -v, 0.0, 0.0, i))
-        else:
-            keys.append((1, h, -s, -v, i))
-    keys.sort()
-    return [k[-1] for k in keys]
+    n = len(palette)
+    if n <= 1:
+        return list(range(n))
+
+    rgb01 = palette.astype(np.float64) / 255.0
+    lab = rgb2lab(rgb01.reshape(1, -1, 3)).reshape(-1, 3)
+
+    # Start from the lightest color (highest L*)
+    current = int(np.argmax(lab[:, 0]))
+    visited = [current]
+    remaining = set(range(n)) - {current}
+
+    while remaining:
+        dists = np.linalg.norm(lab[list(remaining)] - lab[current], axis=1)
+        nearest = list(remaining)[int(np.argmin(dists))]
+        visited.append(nearest)
+        remaining.remove(nearest)
+        current = nearest
+
+    return visited
 
 
 def _layout(page: PageSpec, grid_w: int, grid_h: int, n_colors: int) -> dict:
