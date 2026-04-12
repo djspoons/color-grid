@@ -58,10 +58,12 @@ def quantize_cells(
         labels, palette, chosen = _snap_to_palette(
             features, centers, fixed_palette, color_space
         )
+        labels, palette, chosen = _prune_unused(labels, palette, chosen)
         return labels.reshape(h, w), palette, chosen
 
     rgb_centers = _features_to_rgb(centers, color_space)
     palette = np.clip(rgb_centers, 0, 255).astype(np.uint8)
+    labels, palette, _ = _prune_unused(labels, palette)
     return labels.reshape(h, w), palette, None
 
 
@@ -134,6 +136,24 @@ def _farthest_first(features: np.ndarray, k: int):
     diffs = features[:, None, :] - centers[None, :, :]
     labels = np.argmin(np.linalg.norm(diffs, axis=2), axis=1)
     return labels, centers
+
+
+def _prune_unused(
+    labels: np.ndarray,
+    palette: np.ndarray,
+    chosen: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """Drop palette entries that no cell references and remap labels."""
+    used = np.unique(labels)
+    if len(used) == len(palette):
+        return labels, palette, chosen
+    remap = np.empty(len(palette), dtype=np.intp)
+    remap[used] = np.arange(len(used))
+    labels = remap[labels]
+    palette = palette[used]
+    if chosen is not None:
+        chosen = chosen[used]
+    return labels, palette, chosen
 
 
 def _snap_to_palette(
