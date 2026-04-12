@@ -57,6 +57,46 @@ def _load_font(size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
+def _load_bold_font(size: int) -> ImageFont.ImageFont:
+    """Prefer a heavy weight for grid-cell numbers so they stay legible even
+    when the underlying color is dark."""
+    for name in (
+        "Arial Black.ttf",
+        "Arial Bold.ttf",
+        "HelveticaBold.ttc",
+        "DejaVuSans-Bold.ttf",
+    ):
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return _load_font(size)
+
+
+def _fit_font(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    max_w: int,
+    max_h: int,
+    loader,
+) -> ImageFont.ImageFont:
+    """Binary-search for the largest font size where `text` fits in max_w x max_h."""
+    lo, hi = 10, max(12, max_h)
+    best = loader(lo)
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        font = loader(mid)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        if tw <= max_w and th <= max_h:
+            best = font
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return best
+
+
 def _layout(page: PageSpec, grid_w: int, grid_h: int, n_colors: int) -> dict:
     """Compute cell size and legend geometry that fits on the page."""
     pw, ph = page.size_px
@@ -136,8 +176,9 @@ def render_page(
     img = Image.new("RGB", page.size_px, "white")
     draw = ImageDraw.Draw(img)
 
-    longest = max(len(t) for t in entry_labels) or 1
-    number_font = _load_font(max(10, int(cell * 0.7 / longest)))
+    longest_text = max(entry_labels, key=len)
+    inner = int(cell * 0.78)
+    number_font = _fit_font(draw, longest_text, inner, inner, _load_bold_font)
 
     gx, gy = lay["grid_x"], lay["grid_y"]
     for row in range(h):
