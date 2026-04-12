@@ -63,6 +63,12 @@ from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, 
     help="Page margin in inches.",
 )
 @click.option(
+    "--line-width",
+    type=float,
+    default=None,
+    help="Grid line width in points. Defaults to auto based on cell size.",
+)
+@click.option(
     "--output",
     "-o",
     type=click.Path(dir_okay=False, path_type=Path),
@@ -84,6 +90,7 @@ def main(
     method: str,
     paper: str,
     margin: float,
+    line_width: float | None,
     output: Path | None,
     solution: bool,
 ) -> None:
@@ -129,13 +136,13 @@ def main(
     if chosen_indices is not None and palette_codes is not None:
         entry_labels = [palette_codes[int(i)] for i in chosen_indices]
 
-    data = render_page(labels, palette, page_spec, entry_labels=entry_labels, fmt=fmt)
+    data = render_page(labels, palette, page_spec, entry_labels=entry_labels, fmt=fmt, line_width=line_width)
     save_page(data, output)
     click.echo(f"wrote {output}")
 
     if solution:
         sol_path = output.with_name(f"{output.stem}_solution{output.suffix}")
-        sol_data = render_solution(labels, palette, page_spec, fmt=fmt)
+        sol_data = render_solution(labels, palette, page_spec, fmt=fmt, line_width=line_width)
         save_page(sol_data, sol_path)
         click.echo(f"wrote {sol_path}")
 

@@ -23,6 +23,7 @@ class Session:
     palette: np.ndarray | None = None
     entry_labels: list[str] | None = None
     page_spec: PageSpec | None = None
+    line_width: float | None = None
     created_at: float = field(default_factory=time.time)
 
 

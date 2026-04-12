@@ -113,6 +113,7 @@ def render_page(
     page: PageSpec,
     entry_labels: list[str] | None = None,
     fmt: str = "pdf",
+    line_width: float | None = None,
 ) -> bytes:
     """Render a printable color-by-number page.
 
@@ -121,6 +122,9 @@ def render_page(
     "1".."n".
 
     `fmt` is "pdf" or "svg".
+
+    `line_width`, if provided, sets the grid line width in points. Defaults to
+    auto-scaling based on cell size.
     """
     h, w = labels.shape
     n_colors = len(palette)
@@ -131,6 +135,7 @@ def render_page(
             f"entry_labels has {len(entry_labels)} items but palette has {n_colors}"
         )
     lay = _layout(page, w, h, n_colors)
+    lay["line_width"] = line_width
     order = _legend_order(palette)
 
     if fmt == "svg":
@@ -148,10 +153,12 @@ def render_solution(
     palette: np.ndarray,
     page: PageSpec,
     fmt: str = "pdf",
+    line_width: float | None = None,
 ) -> bytes:
     """Render a filled-in preview on the same page spec."""
     h, w = labels.shape
     lay = _layout(page, w, h, len(palette))
+    lay["line_width"] = line_width
 
     if fmt == "svg":
         from ._backend_svg import render_solution_svg

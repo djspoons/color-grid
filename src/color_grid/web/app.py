@@ -127,6 +127,7 @@ async def generate(
     palette_name: str = Form("none"),
     paper: str = Form("letter"),
     margin: float = Form(0.5),
+    line_width: str = Form("auto"),
 ):
     session = _session_from_request(request)
     if session is None or session.image is None:
@@ -136,6 +137,12 @@ async def generate(
     height = int(_clamp(height, 12, 72))
     colors = int(_clamp(colors, 2, 30))
     margin = float(_clamp(margin, 0.1, 2.0))
+    lw: float | None = None
+    if line_width != "auto":
+        try:
+            lw = float(_clamp(float(line_width), 0.25, 5.0))
+        except ValueError:
+            pass
 
     if color_space not in ("rgb", "lab", "ciecam16"):
         color_space = "lab"
@@ -178,10 +185,10 @@ async def generate(
 
     try:
         grid_svg = await run_in_threadpool(
-            render_page, labels, palette, page_spec, entry_labels, "svg"
+            render_page, labels, palette, page_spec, entry_labels, "svg", lw
         )
         solution_svg = await run_in_threadpool(
-            render_solution, labels, palette, page_spec, "svg"
+            render_solution, labels, palette, page_spec, "svg", lw
         )
     except ValueError as e:
         return _error(request, str(e))
@@ -190,6 +197,7 @@ async def generate(
     session.palette = palette
     session.entry_labels = entry_labels
     session.page_spec = page_spec
+    session.line_width = lw
 
     return templates.TemplateResponse(
         request,
@@ -214,6 +222,7 @@ async def download_grid_pdf(request: Request):
         session.page_spec,
         session.entry_labels,
         "pdf",
+        session.line_width,
     )
     return Response(
         content=pdf_data,
@@ -234,6 +243,7 @@ async def download_solution_pdf(request: Request):
         session.palette,
         session.page_spec,
         "pdf",
+        session.line_width,
     )
     return Response(
         content=pdf_data,

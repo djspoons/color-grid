@@ -38,7 +38,7 @@ def render_page_pdf(
     h, w = labels.shape
     pw, ph = page.size_pt
     cell = lay["cell_pt"]
-    border = max(0.5, cell * 0.04)
+    border = lay["line_width"] if lay.get("line_width") is not None else max(0.5, cell * 0.04)
     gx, gy_top = lay["grid_x"], lay["grid_y"]
 
     buf = io.BytesIO()
@@ -116,7 +116,7 @@ def render_solution_pdf(
     h, w = labels.shape
     pw, ph = page.size_pt
     cell = lay["cell_pt"]
-    border = max(0.5, cell * 0.04)
+    border = lay["line_width"] if lay.get("line_width") is not None else max(0.5, cell * 0.04)
     gx, gy_top = lay["grid_x"], lay["grid_y"]
 
     buf = io.BytesIO()

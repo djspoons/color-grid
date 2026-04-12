@@ -21,7 +21,7 @@ def render_page_svg(
     h, w = labels.shape
     pw, ph = page.size_pt
     cell = lay["cell_pt"]
-    border = max(0.5, cell * 0.04)
+    border = lay["line_width"] if lay.get("line_width") is not None else max(0.5, cell * 0.04)
     gx, gy = lay["grid_x"], lay["grid_y"]
 
     parts: list[str] = []
@@ -107,7 +107,7 @@ def render_solution_svg(
     h, w = labels.shape
     pw, ph = page.size_pt
     cell = lay["cell_pt"]
-    border = max(0.5, cell * 0.04)
+    border = lay["line_width"] if lay.get("line_width") is not None else max(0.5, cell * 0.04)
     gx, gy = lay["grid_x"], lay["grid_y"]
 
     parts: list[str] = []
