@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="layout">
+    <section class="controls">
+        <form id="upload-form"
+              hx-post="/upload"
+              hx-target="#upload-status"
+              hx-encoding="multipart/form-data">
+            <label for="image-input">Image</label>
+            <input id="image-input" type="file" name="image" accept="image/*" required>
+            <button type="submit">Upload</button>
+        </form>
+
+        <div id="upload-status">
+            {% if has_image %}
+            <p class="upload-ok">Image loaded. Adjust options and click Generate.</p>
+            {% endif %}
+        </div>
+
+        <form id="options-form"
+              hx-post="/generate"
+              hx-target="#preview-area"
+              hx-indicator="#spinner">
+            <fieldset>
+                <legend>Grid</legend>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="width">Width</label>
+                        <input id="width" name="width" type="number" value="20" min="2" max="80">
+                    </div>
+                    <div class="field">
+                        <label for="height">Height</label>
+                        <input id="height" name="height" type="number" value="20" min="2" max="80">
+                    </div>
+                    <div class="field">
+                        <label for="colors">Colors</label>
+                        <input id="colors" name="colors" type="number" value="8" min="2" max="30">
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Method</legend>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="color_space">Color space</label>
+                        <select id="color_space" name="color_space">
+                            <option value="lab" selected>LAB</option>
+                            <option value="rgb">RGB</option>
+                            <option value="ciecam16">CIECAM16</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="method">Algorithm</label>
+                        <select id="method" name="method">
+                            <option value="maxcoverage" selected>Max coverage</option>
+                            <option value="kmeans">K-means</option>
+                        </select>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Output</legend>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="paper">Paper</label>
+                        <select id="paper" name="paper">
+                            {% for size in paper_sizes %}
+                            <option value="{{ size }}" {{ "selected" if size == "letter" else "" }}>{{ size | upper }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="margin">Margin (in)</label>
+                        <input id="margin" name="margin" type="number" value="0.5" min="0.1" max="2.0" step="0.1">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="palette_name">Palette</label>
+                    <select id="palette_name" name="palette_name">
+                        <option value="none" selected>None (auto)</option>
+                        {% for p in palettes %}
+                        <option value="{{ p.filename }}">{{ p.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </fieldset>
+
+            <button id="generate-btn" type="submit" {{ "" if has_image else "disabled" }}>Generate</button>
+            <div id="spinner" class="htmx-indicator">Processing&hellip;</div>
+        </form>
+    </section>
+
+    <section class="preview" id="preview-area">
+        <p class="placeholder">Upload an image and click Generate to see a preview.</p>
+    </section>
+</div>
+{% endblock %}

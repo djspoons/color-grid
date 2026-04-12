@@ -13,8 +13,17 @@ dependencies = [
     "reportlab>=4.0",
 ]
 
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "python-multipart>=0.0.7",
+    "jinja2>=3.1",
+]
+
 [project.scripts]
 colorgrid = "color_grid.cli:main"
+colorgrid-web = "color_grid.web:run"
 
 [build-system]
 requires = ["hatchling"]
