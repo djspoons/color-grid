@@ -30,7 +30,7 @@ from .render import PAPER_SIZES_INCHES, PageSpec, render_page, render_solution, 
     "palette_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
-    help="Snap output colors to entries in a fixed palette JSON file (see color-sets/).",
+    help="Snap output colors to entries in a fixed palette JSON file (see palettes/).",
 )
 @click.option(
     "--method",

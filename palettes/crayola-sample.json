@@ -1,0 +1,55 @@
+{
+  "name": "Crayola Sample",
+  "color_space": "srgb",
+  "colors": [
+    {
+      "code": "R",
+      "color": [
+        209,
+        24,
+        50
+      ]
+    },
+    {
+      "code": "O",
+      "color": [
+        255,
+        124,
+        22
+      ]
+    },
+    {
+      "code": "Y",
+      "color": [
+        254,
+        229,
+        0
+      ]
+    },
+        {
+      "code": "G",
+      "color": [
+        0,
+        110,
+        70
+      ]
+    },
+    {
+      "code": "B",
+      "color": [
+        0,
+        94,
+        163
+      ]
+    },
+    {
+    "code": "P",
+      "color": [
+        94,
+        51,
+        145
+      ]
+    }
+  ]
+}
+

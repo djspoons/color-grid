@@ -1,4 +1,4 @@
-"""Load color-set files in the project's simple JSON format.
+"""Load palette files in the project's simple JSON format.
 
 Schema:
     {

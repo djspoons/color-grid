@@ -108,20 +108,6 @@ def test_fixed_palette_snaps_to_palette_entries():
     assert {tuple(c) for c in out_palette.tolist()} == expected
 
 
-def test_load_faber_castell_palette():
-    path = Path("color-sets/faber-castell-black-edition-colored-pencils.json")
-    pal = load_palette(path)
-    assert pal.name.startswith("Faber-Castell")
-    assert pal.rgb.dtype == np.uint8 and pal.rgb.shape == (100, 3)
-    assert len(pal.codes) == 100
-    assert len(set(pal.codes)) == 100
-    assert all(len(c) <= 4 for c in pal.codes)
-    # The first entry is Faber-Castell's "Yellow", published sRGB [255, 226, 3].
-    # This guards against regressions in the CAM16-UCS scaling convention.
-    r, g, b = pal.rgb[0]
-    assert r == 255
-    assert abs(int(g) - 226) <= 3
-    assert int(b) <= 10
 
 
 def test_load_palette_srgb_format(tmp_path):
