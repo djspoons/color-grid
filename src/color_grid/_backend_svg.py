@@ -38,7 +38,7 @@ def render_page_svg(
     font_size = cell * 0.65
     font_attrs = (
         'font-family="Helvetica, Arial, sans-serif" '
-        'font-weight="bold" '
+        'font-weight="normal" '
         'text-anchor="middle" '
         'dominant-baseline="central"'
     )

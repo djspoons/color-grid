@@ -47,7 +47,7 @@ def render_page_pdf(
     # --- Grid ---
     longest_text = max(entry_labels, key=len)
     inner = cell * 0.78
-    font_name = "Helvetica-Bold"
+    font_name = "Helvetica"
     font_size = _fit_font_size(longest_text, inner, inner, font_name)
     c.setFont(font_name, font_size)
     c.setLineWidth(border)
