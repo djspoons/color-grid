@@ -91,20 +91,22 @@ def assign_keys(palette: np.ndarray) -> list[str]:
 
     # --- Assign chromatic letters (ROYGBIV, then secondary) ---
     candidates = _RAINBOW + _SECONDARY
-    # Build (letter, canonical_hue, color_index, distance) pairs.
+    # Score = hue distance + penalty for low saturation/value. This ensures
+    # the most vivid, bright color wins when multiple colors share a hue.
     matches = []
     for letter, canon_hue in candidates:
         for i, h, s, v in chromatic:
             if keys[i] is not None:
                 continue
-            d = _hue_dist(h, canon_hue)
-            if d < _HUE_THRESHOLD:
-                matches.append((d, letter, i))
+            hd = _hue_dist(h, canon_hue)
+            if hd < _HUE_THRESHOLD:
+                score = hd + 0.03 * (1.0 - s) + 0.01 * (1.0 - v)
+                matches.append((score, letter, i))
 
     # Greedy assignment: best matches first.
     matches.sort()
     assigned_indices: set[int] = set()
-    for d, letter, i in matches:
+    for _, letter, i in matches:
         if letter in used_letters or i in assigned_indices:
             continue
         keys[i] = letter
