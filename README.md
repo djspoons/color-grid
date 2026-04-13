@@ -41,6 +41,10 @@ Stop with Ctrl-C.
 
 ### Docker
 
+Image tags are auto-generated: `YYYYMMDD-<git-hash>` if the working tree is
+clean, `YYYYMMDD-development` if it has uncommitted changes. The version is
+displayed in the app footer.
+
 Build and run locally (native platform):
 
 ```
@@ -56,13 +60,14 @@ docker compose down
 Cross-compile for a linux/amd64 server:
 
 ```
-docker buildx build --platform linux/amd64 -t colorgrid:linux-amd64 .
+TAG=$(date +%Y%m%d)-$(git diff --quiet && git rev-parse --short HEAD || echo development)
+docker buildx build --platform linux/amd64 --build-arg APP_VERSION=$TAG -t colorgrid:$TAG .
 ```
 
 Then push/transfer to your server and run:
 
 ```
-docker run -d -p 8000:8000 --restart unless-stopped colorgrid:linux-amd64
+docker run -d -p 8000:8000 --restart unless-stopped colorgrid:$TAG
 ```
 
 ## Tests

@@ -282,6 +282,15 @@ button:disabled,
     gap: 0.75rem;
 }
 
+/* --- Footer --- */
+
+footer {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #a0a0a0;
+    padding: 1.5rem 0 1rem;
+}
+
 /* --- Feedback --- */
 
 .status-msg {

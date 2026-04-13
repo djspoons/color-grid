@@ -24,10 +24,12 @@ _PALETTES_DIR = Path(os.environ.get(
 ))
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+_APP_VERSION = os.environ.get("APP_VERSION")
 
 app = FastAPI(title="Color Grid")
 app.mount("/static", StaticFiles(directory=_WEB_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=_WEB_DIR / "templates")
+templates.env.globals["app_version"] = _APP_VERSION
 
 
 def _discover_palettes() -> list[dict]:
