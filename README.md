@@ -41,7 +41,7 @@ Stop with Ctrl-C.
 
 ### Docker
 
-Build and run:
+Build and run locally (native platform):
 
 ```
 docker compose up -d --build
@@ -51,6 +51,18 @@ The app runs at http://localhost:8000. To stop:
 
 ```
 docker compose down
+```
+
+Cross-compile for a linux/amd64 server:
+
+```
+docker buildx build --platform linux/amd64 -t colorgrid:linux-amd64 .
+```
+
+Then push/transfer to your server and run:
+
+```
+docker run -d -p 8000:8000 --restart unless-stopped colorgrid:linux-amd64
 ```
 
 ## Tests
